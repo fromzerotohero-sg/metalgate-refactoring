@@ -1,0 +1,8 @@
+"use client";
+import { FormEvent, useState } from "react";
+import { api, ApiError } from "@/src/lib/api";
+
+export default function RegisterPage() { const [email,setEmail]=useState(""); const [password,setPassword]=useState(""); const [username,setUsername]=useState(""); const [message,setMessage]=useState(""); const [done,setDone]=useState(false); const [busy,setBusy]=useState(false);
+  async function submit(e:FormEvent){e.preventDefault();if(password.length<8){setMessage("La password deve avere almeno 8 caratteri.");return;}setBusy(true);setMessage("");try{await api.register({email,password,username:username||undefined,redirect:window.location.origin+"/verify-email"});setDone(true);}catch(error){setMessage((error as ApiError).message);}finally{setBusy(false);}}
+  return <main className="form-page"><a className="brand" href="/"><img src="/logo.webp" alt="From Zero To Hero" /><span>From Zero To Hero</span></a><section className="form-card"><p className="eyebrow">IL TUO PERCORSO</p><h1>{done ? "Controlla la tua email." : "Crea il tuo accesso."}</h1>{done ? <><p>Abbiamo inviato il link di verifica. Dopo il click entrerai nell’ecosistema.</p><a className="button primary" href="/">Torna alla home</a></> : <form onSubmit={submit}><label>Nome utente (opzionale)<input value={username} onChange={e=>setUsername(e.target.value)} /></label><label>Email<input type="email" required value={email} onChange={e=>setEmail(e.target.value)} /></label><label>Password<input type="password" minLength={8} required value={password} onChange={e=>setPassword(e.target.value)} /></label>{message&&<p className="form-error">{message}</p>}<button className="button primary" disabled={busy}>{busy?"Creazione…":"Crea account"}</button></form>}</section></main>;
+}

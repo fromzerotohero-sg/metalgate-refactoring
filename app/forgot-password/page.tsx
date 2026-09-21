@@ -1,0 +1,4 @@
+"use client";
+import { FormEvent, useState } from "react";
+import { api, ApiError } from "@/src/lib/api";
+export default function ForgotPasswordPage(){const [email,setEmail]=useState("");const [message,setMessage]=useState("");async function submit(e:FormEvent){e.preventDefault();try{await api.forgotPassword(email);setMessage("Se l’account esiste, abbiamo inviato le istruzioni.");}catch(error){setMessage((error as ApiError).message);}}return <main className="form-page"><section className="form-card"><img className="form-logo" src="/logo.webp" alt="From Zero To Hero"/><p className="eyebrow">RECUPERO ACCESSO</p><h1>Reimposta la password.</h1><form onSubmit={submit}><label>Email<input type="email" required value={email} onChange={e=>setEmail(e.target.value)}/></label><button className="button primary">Invia codice</button></form>{message&&<p>{message}</p>}<a href="/login">Torna al login</a></section></main>}
