@@ -12,12 +12,25 @@ PyJWT==2.8.0
 python-dotenv==1.0.0
 requests==2.32.3
 stripe==7.14.0
-supabase==2.3.0
+# Pinned as a pair, and the pair is the point. `supabase==2.3.0` declared
+# `httpx>=0.24,<0.25` while allowing `gotrue<3.0`, so pip installed a modern
+# gotrue next to an httpx that predates `Client(proxy=…)`. `create_client()`
+# then died at import with
+#     TypeError: Client.__init__() got an unexpected keyword argument 'proxy'
+# which is a runtime failure, not a build failure — the deploy went green and
+# every request 500'd. From 2.x on, supabase declares its sub-clients exactly
+# (gotrue/postgrest/storage3/realtime all share its version), so this tree is
+# deterministic instead of whatever the resolver happens to pick.
+supabase==2.31.0
+# Held inside supabase's `>=0.26,<0.29` window rather than left to float. 0.27.x
+# still accepts the deprecated `proxies=` kwarg that the bundled sub-clients may
+# pass, and 0.28 removed it.
+httpx==0.27.2
 # `send_campaign_batch` posts to Resend's batch endpoint directly, because the
 # `Idempotency-Key` header it needs is not exposed consistently across SDK
 # versions. The SDK is therefore only used for single sends, so the version is
 # bounded rather than pinned to a patch release: <3.0.0 keeps a future major
-# release from changing that API under a deploy, while still letting pip back off
-# to a version that agrees with the `httpx` range `supabase` pins.
+# release from changing that API under a deploy, while still letting the resolver
+# honour the explicit `httpx` pin above.
 resend>=2.0.0,<3.0.0
 redis>=5.0.0
