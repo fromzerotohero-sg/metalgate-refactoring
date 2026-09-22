@@ -4,7 +4,7 @@ import { isLocalPreview, previewHref } from "@/src/lib/preview";
 import { useT } from "@/src/lib/i18n";
 import { SiteHeader } from "@/src/components/SiteHeader";
 import { SiteFooter } from "@/src/components/SiteFooter";
-import { PlatformCards, PlansGrid } from "@/src/components/Grids";
+import { PlatformCards } from "@/src/components/Grids";
 import { Icon } from "@/src/components/Icon";
 import { StoreBadges } from "@/src/components/StoreBadges";
 
@@ -32,15 +32,14 @@ export default function Home() {
           </div>
           <div className="hero-art">
             <img src="/hero-worlds.webp" alt="From Zero To Hero" />
-            <span className="hero-art-caption">FROM ZERO TO HERO</span>
           </div>
         </div>
       </section>
 
       <div className="trust-strip">
-        <div className="trust-item"><span className="trust-icon"><Icon name="zap" size={19} /></span><div><strong>{t("home.trust1t")}</strong><small>{t("home.trust1d")}</small></div></div>
-        <div className="trust-item"><span className="trust-icon"><Icon name="user" size={19} /></span><div><strong>{t("home.trust2t")}</strong><small>{t("home.trust2d")}</small></div></div>
-        <div className="trust-item"><span className="trust-icon"><Icon name="infinity" size={19} /></span><div><strong>{t("home.trust3t")}</strong><small>{t("home.trust3d")}</small></div></div>
+        <div className="trust-item"><span className="trust-icon"><Icon name="sparkles" size={19} /></span><div><strong>{t("home.trust1t")}</strong><small>{t("home.trust1d")}</small></div></div>
+        <div className="trust-item"><span className="trust-icon"><Icon name="gem" size={19} /></span><div><strong>{t("home.trust2t")}</strong><small>{t("home.trust2d")}</small></div></div>
+        <div className="trust-item"><span className="trust-icon"><Icon name="chart" size={19} /></span><div><strong>{t("home.trust3t")}</strong><small>{t("home.trust3d")}</small></div></div>
       </div>
 
       <section className="section-light" id="platforms">
@@ -56,6 +55,25 @@ export default function Home() {
         </div>
       </section>
 
+      <section className="section-light" id="features" style={{ paddingTop: 0 }}>
+        <div className="section-inner">
+          <div className="section-head">
+            <div>
+              <h2>{t("home.featuresTitle")}</h2>
+              <p>{t("home.featuresLead")}</p>
+            </div>
+          </div>
+          <div className="feat-list">
+            {[1, 2, 3, 4, 5].map((feature) => (
+              <div className="feat-item" key={feature}>
+                <span className="feat-num" aria-hidden>{String(feature).padStart(2, "0")}</span>
+                <div><strong>{t(`home.feat${feature}t`)}</strong><p>{t(`home.feat${feature}d`)}</p></div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       <section className="section-light" id="how" style={{ paddingTop: 0 }}>
         <div className="section-inner">
           <div className="section-head">
@@ -67,7 +85,7 @@ export default function Home() {
           <div className="how-steps">
             {[1, 2, 3].map((step) => (
               <div className="how-step" key={step}>
-                <span className="how-step-num"><Icon name={step === 1 ? "user" : step === 2 ? "crown" : "grid"} size={20} /></span>
+                <span className="how-step-num"><Icon name={step === 1 ? "user" : step === 2 ? "grid" : "chart"} size={20} /></span>
                 <div><strong>{t(`home.step${step}t`)}</strong><p>{t(`home.step${step}d`)}</p></div>
               </div>
             ))}
@@ -77,15 +95,16 @@ export default function Home() {
 
       <section className="section-light" id="plans" style={{ paddingTop: 0 }}>
         <div className="section-inner">
-          <div className="section-head">
+          <div className="try-banner">
             <div>
-              <h2>{t("home.plansTitle")}</h2>
-              <p>{t("home.plansLead")}</p>
+              <h2>{t("home.tryTitle")}</h2>
+              <p>{t("home.tryLead")}</p>
             </div>
-            <a className="section-link" href={href("/pricing")}>{t("home.plansCta")} →</a>
+            <div className="try-actions">
+              <a className="btn btn-primary" href={href("/register")}>{t("home.tryCta")} <span className="arrow" aria-hidden>→</span></a>
+              <a className="try-plans-link" href={href("/pricing")}>{t("home.tryPlans")}</a>
+            </div>
           </div>
-          <PlansGrid onChoose={() => { window.location.href = href("/pricing"); }} />
-          <p className="page-note">{t("pricing.note")}</p>
         </div>
       </section>
 

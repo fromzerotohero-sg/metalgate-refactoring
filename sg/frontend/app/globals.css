@@ -130,16 +130,22 @@ input, select, textarea { font-family: inherit; }
   padding: 9px 12px; border-radius: 10px;
 }
 .lang-switcher-btn:hover { background: rgba(255, 255, 255, 0.1); }
-.lang-switcher-btn svg { opacity: 0.85; display: block; }
+.lang-switcher-btn svg { display: block; }
+.flag-svg {
+  width: 20px; height: 13.5px; border-radius: 3px; display: block; flex-shrink: 0;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35), 0 1px 3px rgba(0, 0, 0, 0.35);
+}
 .lang-menu {
   position: absolute; right: 0; top: calc(100% + 8px);
   background: #fff; border-radius: 12px; box-shadow: var(--shadow-card);
-  padding: 6px; min-width: 132px; display: flex; flex-direction: column;
+  padding: 6px; min-width: 148px; display: flex; flex-direction: column;
 }
 .lang-menu button {
+  display: flex; align-items: center; gap: 9px;
   text-align: left; padding: 9px 12px; border-radius: 8px;
   font-size: 13.5px; font-weight: 600; color: var(--ink);
 }
+.lang-menu button .flag-svg { box-shadow: 0 0 0 1px rgba(4, 10, 34, 0.14); }
 .lang-menu button:hover { background: var(--bg-light); }
 .lang-menu button.active { color: var(--blue); background: #eef4ff; }
 
@@ -186,13 +192,6 @@ input, select, textarea { font-family: inherit; }
   position: absolute; inset: 0; width: 100%; height: 100%;
   object-fit: cover; display: block;
   filter: brightness(1.34) saturate(1.12) contrast(0.97);
-}
-.hero-art-caption {
-  position: absolute; left: 18px; bottom: 18px; z-index: 2;
-  color: #fff; font-size: 12px; letter-spacing: 0.18em; font-weight: 800;
-  padding: 9px 16px; border-radius: 999px;
-  background: rgba(4, 10, 34, 0.55); border: 1px solid rgba(255, 255, 255, 0.22);
-  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
 }
 .hero-pills { display: flex; gap: 34px; margin-top: 40px; flex-wrap: wrap; }
 .hero-pill { display: flex; align-items: center; gap: 11px; font-size: 14.5px; font-weight: 600; color: rgba(255, 255, 255, 0.9); }
@@ -305,6 +304,24 @@ a.platform-card:hover .platform-arrow, .platform-card a:hover .platform-arrow { 
 }
 .how-step strong { display: block; font-size: 16.5px; margin-bottom: 5px; }
 .how-step p { color: var(--muted); font-size: 14px; line-height: 1.5; }
+
+/* ---------- Features ---------- */
+.feat-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0 44px; }
+.feat-item { display: flex; gap: 18px; align-items: flex-start; padding: 22px 0; border-top: 1px solid var(--line); }
+.feat-num { font-size: 13px; font-weight: 800; color: var(--blue); letter-spacing: 0.08em; padding-top: 3px; }
+.feat-item strong { display: block; font-size: 16.5px; margin-bottom: 4px; }
+.feat-item p { color: var(--muted); font-size: 14px; line-height: 1.5; }
+
+/* ---------- Try banner ---------- */
+.try-banner {
+  background: #fff; border-radius: var(--radius-lg); box-shadow: var(--shadow-soft);
+  padding: 36px 40px; display: flex; align-items: center; justify-content: space-between; gap: 26px; flex-wrap: wrap;
+}
+.try-banner h2 { font-size: clamp(26px, 3vw, 34px); font-weight: 800; letter-spacing: -0.02em; }
+.try-banner p { color: var(--muted); font-size: 15px; margin-top: 8px; max-width: 520px; }
+.try-actions { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.try-plans-link { color: var(--blue); font-weight: 700; font-size: 14.5px; white-space: nowrap; }
+.try-plans-link:hover { text-decoration: underline; }
 
 /* ---------- Plans ---------- */
 .plans-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; align-items: stretch; }
@@ -761,6 +778,8 @@ a.platform-card:hover .platform-arrow, .platform-card a:hover .platform-arrow { 
   .trust-item + .trust-item { border-left: none; border-top: 1px solid var(--line); }
   .trust-item { padding: 12px 14px; }
   .platforms-grid, .plans-grid, .how-steps, .preview-groups, .mini-steps { grid-template-columns: 1fr; }
+  .feat-list { grid-template-columns: 1fr; }
+  .try-banner { padding: 26px 22px; }
   .page-hero { padding: 52px 18px 44px; }
   .legal-hero { padding: 48px 18px 40px; }
   .auth-below { padding-left: 18px; padding-right: 18px; }

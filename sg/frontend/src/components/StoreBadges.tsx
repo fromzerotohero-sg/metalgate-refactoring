@@ -19,11 +19,11 @@ export function StoreBadges() {
       <div className="store-badges">
         <a href="#" className="store-badge" onClick={soon} aria-disabled="true" title={t("store.soon")}>
           <Icon name="apple" size={20} />
-          <span><small>{t("store.downloadOn")}</small><strong>App Store</strong></span>
+          <span><small>{t("store.soon")}</small><strong>App Store</strong></span>
         </a>
         <a href="#" className="store-badge" onClick={soon} aria-disabled="true" title={t("store.soon")}>
           <Icon name="playStore" size={19} />
-          <span><small>{t("store.getOn")}</small><strong>Google Play</strong></span>
+          <span><small>{t("store.soon")}</small><strong>Google Play</strong></span>
         </a>
       </div>
       {toast && <div className="toast" role="status">{t("store.soon")}</div>}
