@@ -416,8 +416,31 @@ def delete_account():
     Note: this is a hard delete, matching the behaviour this API already had.
     architecture/07 recommends moving to soft-delete + anonymisation; that is a
     deliberate follow-up, not an oversight.
+
+    The Stripe subscription is cancelled **before** anything is deleted, and the
+    deletion is abandoned if that cannot be done. `subscriptions.user_id` cascades
+    off `users`, so removing the row destroys the only local record of what to
+    cancel — while Stripe keeps billing on its own schedule, with no webhook
+    involved, and the user cannot stop it, because cancellation only lives in the
+    billing portal behind a session this deletion revokes. Refusing costs them a
+    retry; proceeding would cost them money every month, indefinitely.
     """
     user_id = g.user["id"]
+
+    problem = billing.cancel_subscriptions_for_user(user_id)
+    if problem:
+        # The detail is for the logs. The client only needs to know that nothing was
+        # deleted and that trying again is the correct next step.
+        logger.error("Refusing to delete %s: %s", user_id, problem)
+        return (
+            jsonify(
+                {
+                    "error": "Could not cancel the active subscription, so the account was not deleted",
+                    "reason": "subscription_not_cancelled",
+                }
+            ),
+            502,
+        )
 
     try:
         try:

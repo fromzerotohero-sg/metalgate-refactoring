@@ -81,7 +81,7 @@ export type Transaction = {
 
 export type AuthSession = { id: string; current?: boolean; service?: string; user_agent?: string; last_seen_at?: string; created_at?: string };
 
-export type ApiErrorPayload = { error?: string; message?: string; requires_verification?: boolean };
+export type ApiErrorPayload = { error?: string; message?: string; requires_verification?: boolean; reason?: string };
 
 export class ApiError extends Error {
   constructor(public status: number, message: string, public payload?: ApiErrorPayload) { super(message); }

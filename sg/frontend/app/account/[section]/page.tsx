@@ -162,7 +162,17 @@ export default function AccountSectionPage() {
                     // Surfacing this matters more than anywhere else in the app:
                     // the action is irreversible, so a silent failure would leave
                     // the user believing their account is gone when it is not.
-                    setMessage((error as ApiError).message || t("common.error"));
+                    const caught = error as ApiError;
+                    // One failure is worth naming. The API refuses the deletion
+                    // outright when it cannot stop the subscription first, because
+                    // deleting the account would leave the card being charged with
+                    // nothing behind it. "Nothing was deleted, and here is why" is
+                    // far more useful here than a generic error.
+                    setMessage(
+                      caught.payload?.reason === "subscription_not_cancelled"
+                        ? t("section.profile.deleteBlocked")
+                        : caught.message || t("common.error")
+                    );
                   }
                 }}>{t("section.profile.delete")}</button>
               )}

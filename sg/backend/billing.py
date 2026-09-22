@@ -155,6 +155,109 @@ def create_portal_session(user: dict, return_url: str) -> dict:
     return {"url": session.url}
 
 
+# ── Cancellation, for account deletion ──────────────────────────────────────
+
+# Statuses that no longer bill anything. Every other status — including
+# `incomplete`, whose first payment Stripe may still retry — must be cancelled
+# explicitly.
+DEAD_SUBSCRIPTION_STATUSES = frozenset({"canceled", "incomplete_expired"})
+
+
+def cancel_subscriptions_for_user(user_id: str) -> str | None:
+    """
+    Cancel every subscription that could still charge this user, immediately.
+
+    Called *before* an account is deleted, and the caller abandons the deletion if
+    this fails. `subscriptions.user_id` cascades off `users`, so removing the row
+    takes the only local record of what to cancel with it — while Stripe goes on
+    billing on its own schedule, with no webhook involved. The user cannot stop it
+    either: cancellation only happens in the Stripe billing portal, and that sits
+    behind a session which the deletion revokes. Failing closed costs them a retry;
+    failing open costs them money every month, forever.
+
+    Returns a reason on failure, or ``None`` when there is nothing left to cancel.
+
+    Both sources are consulted deliberately. The local row is a *mirror* of Stripe
+    maintained by webhooks, and the webhook is not what collects the money. A
+    subscription that exists in Stripe but not locally — a dropped
+    `checkout.session.completed`, an endpoint that was down, a row destroyed by an
+    earlier deletion — is precisely the one that would otherwise bill forever, so
+    the customer's subscriptions are listed from Stripe directly as well.
+
+    The Stripe **customer is deliberately left in place.** Its invoices are the
+    financial record of what was sold and have to be retained; deleting the
+    customer would take the payment history with it. Only the ability to charge
+    again is removed.
+    """
+    try:
+        local = (
+            db.require_client()
+            .table("subscriptions")
+            .select("stripe_subscription_id")
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+        )
+        account = (
+            db.require_client()
+            .table("users")
+            .select("stripe_customer_id")
+            .eq("id", user_id)
+            .limit(1)
+            .execute()
+        )
+    except Exception as exc:
+        logger.error("Could not read the billing record for %s: %s", user_id, exc)
+        return "could not read the billing record"
+
+    local_id = (local.data[0] if local.data else {}).get("stripe_subscription_id")
+    customer_id = (account.data[0] if account.data else {}).get("stripe_customer_id")
+
+    if not local_id and not customer_id:
+        # Nothing was ever linked to Stripe, so nothing can be billing.
+        return None
+
+    try:
+        stripe = configure_stripe()
+    except RuntimeError as exc:
+        logger.error("Cannot cancel subscriptions for %s: %s", user_id, exc)
+        return "billing is not configured"
+
+    candidates = {local_id} if local_id else set()
+
+    if customer_id:
+        try:
+            listed = stripe.Subscription.list(customer=customer_id, status="all", limit=100)
+            for subscription in listed.data:
+                if subscription.get("status") not in DEAD_SUBSCRIPTION_STATUSES:
+                    candidates.add(subscription["id"])
+        except stripe.error.StripeError as exc:
+            logger.error("Could not list subscriptions for customer %s: %s", customer_id, exc)
+            return "could not list the customer's subscriptions"
+
+    for subscription_id in sorted(candidates):
+        try:
+            stripe.Subscription.cancel(subscription_id)
+            logger.info(
+                "Cancelled Stripe subscription %s with the deletion of user %s",
+                subscription_id,
+                user_id,
+            )
+        except stripe.error.InvalidRequestError as exc:
+            # `resource_missing` means it is already gone (cancelled earlier, or the
+            # id belongs to the other mode). Either way nothing can charge.
+            if getattr(exc, "code", None) == "resource_missing":
+                logger.info("Subscription %s was already gone in Stripe.", subscription_id)
+                continue
+            logger.error("Could not cancel subscription %s: %s", subscription_id, exc)
+            return "could not cancel the subscription"
+        except stripe.error.StripeError as exc:
+            logger.error("Could not cancel subscription %s: %s", subscription_id, exc)
+            return "could not cancel the subscription"
+
+    return None
+
+
 # ── Subscription record ─────────────────────────────────────────────────────
 
 def upsert_subscription(user_id: str, subscription: dict, *, plan_id: str | None = None) -> dict:
@@ -209,10 +312,37 @@ def _price_id_of(subscription: dict) -> str | None:
     return _id_of(items[0].get("price"))
 
 
+def _user_exists(user_id: str) -> bool:
+    """
+    Whether `users` still has this id.
+
+    Fails **closed**: an unreadable database reports "yes". The alternative —
+    reporting "gone" because a read failed — would let a transient database blip
+    look like a deleted account, and a deleted account is a subscription nobody is
+    watching.
+    """
+    try:
+        found = (
+            db.require_client().table("users").select("id").eq("id", user_id).limit(1).execute()
+        )
+    except Exception as exc:
+        logger.error("Could not check whether user %s exists: %s", user_id, exc)
+        return True
+    return bool(found.data)
+
+
 def find_user_id(subscription: dict) -> str | None:
-    """Resolve the owning user: metadata first, then the Stripe customer id."""
+    """
+    Resolve the owning user: metadata first, then the Stripe customer id.
+
+    The metadata id is a *claim* recorded at checkout, and it outlives the account:
+    deleting a user leaves that id in the subscription's metadata permanently. It is
+    therefore verified before being returned. Trusting it blindly made every later
+    webhook for a deleted user's subscription write to a row that no longer existed
+    — a foreign key violation on each renewal, instead of a clean "no owner".
+    """
     from_metadata = (subscription.get("metadata") or {}).get("user_id")
-    if from_metadata:
+    if from_metadata and _user_exists(str(from_metadata)):
         return str(from_metadata)
 
     customer_id = _id_of(subscription.get("customer"))
