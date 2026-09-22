@@ -8,7 +8,11 @@
 Flask==3.0.0
 flask-cors==4.0.0
 flask-limiter==3.5.0
-PyJWT==2.8.0
+# supabase-auth==2.31.0 requires `pyjwt[crypto]>=2.12.0`, so this cannot stay on
+# 2.8.0. The application only uses HS256 `encode`/`decode`, the `PyJWTError`
+# hierarchy and `ExpiredSignatureError`, all unchanged across 2.x — and 2.14.0 is
+# what the simulation harness already runs against.
+PyJWT==2.14.0
 python-dotenv==1.0.0
 requests==2.32.3
 stripe==7.14.0
