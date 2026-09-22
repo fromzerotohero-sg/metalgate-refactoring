@@ -1,0 +1,12 @@
+This directory exists to be empty, and it is the API project's static output.
+
+With no output directory configured, Vercel publishes the project root, which
+served the backend's own source over HTTP — /backend/app.py, /backend/config.py
+and /requirements.txt were all reachable, and only `.vercelignore` stood between
+a stray secret file and the public internet.
+
+Pointing `outputDirectory` at this empty directory leaves the deployment with a
+single route table: the catch-all rewrite to api/index.py. Do not put assets here
+expecting them to be served — the Flask application owns every path.
+
+See sg/vercel.json and sg/README.md.
