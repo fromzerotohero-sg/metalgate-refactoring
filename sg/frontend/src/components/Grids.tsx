@@ -6,13 +6,13 @@ import { isLocalPreview, previewHref, previewPlans } from "@/src/lib/preview";
 import { useT } from "@/src/lib/i18n";
 import { Icon, type IconName } from "./Icon";
 
-const PLATFORMS = [
+const PLATFORMS: { key: string; tone: string; badge: string; href: string | null; img: string; external?: boolean }[] = [
   // efootball is a live product on its own host. It authenticates through SilverGate
   // and shares the brand session cookie, so this is an ordinary link into it rather
   // than a route on this site.
-  { key: "efootball", tone: "tone-blue", badge: "platform.live", href: "https://efootball.fromzerotohero.io", img: "/cards/efootball.jpg", credit: "“Night begins to fall over Cardiff City Stadium” — joncandy, CC BY-SA 2.0" },
-  { key: "arena", tone: "tone-violet", badge: "platform.community", href: "/register", img: "/cards/arena.jpg", credit: "“DSC_0271” — ZoneESports, CC BY 2.0" },
-  { key: "league", tone: "tone-slate", badge: "platform.soon", href: "/register", img: "/cards/league.jpg", credit: "“Gaming computer keyboard RGB” — karlhols, CC BY 2.0" }
+  { key: "efootball", tone: "tone-blue", badge: "platform.live", href: "https://efootball.fromzerotohero.io/", img: "/cards/efootball.webp", external: true },
+  { key: "arena", tone: "tone-violet", badge: "platform.community", href: "/register", img: "/cards/arena.webp" },
+  { key: "league", tone: "tone-slate", badge: "platform.soon", href: null, img: "/cards/league.webp" }
 ];
 
 const PLAN_ICONS: Record<string, IconName> = { lite: "sprout", pro: "crown", ultra: "gem" };
@@ -22,30 +22,33 @@ const PLAN_FEATURES: Record<string, string[]> = {
   ultra: ["pricing.featUltra1", "pricing.featUltra2", "pricing.featUltra3"]
 };
 
-export function PlatformCards({ showCredits = false }: { showCredits?: boolean }) {
+export function PlatformCards() {
   const t = useT();
   const preview = isLocalPreview();
   return (
-    <>
-      <div className="platforms-grid">
-        {PLATFORMS.map((platform) => (
-          // An absolute href is a link off this site, so it must not have the local
-          // preview flag appended to it.
-          <a className={`platform-card ${platform.tone}`} href={platform.href.startsWith("http") ? platform.href : preview ? previewHref(platform.href) : platform.href} key={platform.key}>
+    <div className="platforms-grid">
+      {PLATFORMS.map((platform) => {
+        // An absolute href is a link off this site, so it must not have the local
+        // preview flag appended to it.
+        const href = platform.href && !platform.external && preview ? previewHref(platform.href) : platform.href;
+        const content = (
+          <>
             <img className="platform-card-img" src={platform.img} alt="" loading="lazy" />
             <span className="platform-card-overlay" aria-hidden />
             <span className="platform-badge">{t(platform.badge)}</span>
             <h3>{t(`platform.${platform.key}.name`)}</h3>
             <p>{t(`platform.${platform.key}.desc`)}</p>
             <span className="platform-tags">{t(`platform.${platform.key}.tags`)}</span>
-            <span className="platform-arrow" aria-hidden>→</span>
-          </a>
-        ))}
-      </div>
-      {showCredits && (
-        <p className="image-credits">Foto: {PLATFORMS.map((platform) => platform.credit).join(" · ")}</p>
-      )}
-    </>
+            {href && <span className="platform-arrow" aria-hidden>{platform.external ? "↗" : "→"}</span>}
+          </>
+        );
+        return href ? (
+          <a className={`platform-card ${platform.tone}`} href={href} key={platform.key}>{content}</a>
+        ) : (
+          <div className={`platform-card ${platform.tone} soon`} key={platform.key}>{content}</div>
+        );
+      })}
+    </div>
   );
 }
 

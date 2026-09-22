@@ -16,7 +16,7 @@ export default function PlatformsPage() {
         <p>{t("platforms.lead")}</p>
       </section>
       <div className="page-body">
-        <PlatformCards showCredits />
+        <PlatformCards />
       </div>
       <SiteFooter />
     </main>

@@ -32,6 +32,7 @@ export default function AccountSectionPage() {
   const [tag, setTag] = useState(preview ? previewUser.tag ?? "" : "");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [showUsage, setShowUsage] = useState(false);
 
   const load = useCallback(async () => {
     setMessage("");
@@ -151,6 +152,29 @@ export default function AccountSectionPage() {
   const usage = credits?.usage;
   const plan = credits?.plan;
   const percent = typeof usage?.percent === "number" ? Math.min(100, Math.max(0, usage.percent)) : 0;
+
+  const payments = transactions.filter((transaction) => transaction.amount > 0);
+  const usageList = transactions.filter((transaction) => transaction.amount <= 0);
+  const now = new Date();
+  const monthTransactions = transactions.filter((transaction) => {
+    const date = new Date(transaction.timestamp ?? "");
+    return !Number.isNaN(date.getTime()) && date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+  });
+  const monthUsed = monthTransactions.filter((transaction) => transaction.amount < 0).reduce((sum, transaction) => sum + Math.abs(transaction.amount), 0);
+  const monthAdded = monthTransactions.filter((transaction) => transaction.amount > 0).reduce((sum, transaction) => sum + transaction.amount, 0);
+  const monthCount = monthTransactions.length;
+
+  function renderTransaction(transaction: Transaction) {
+    return (
+      <div className="transaction-row" key={transaction.id}>
+        <div>
+          <strong>{transaction.description}</strong>
+          <small>{transaction.timestamp ? new Date(transaction.timestamp).toLocaleString() : ""}</small>
+        </div>
+        <span className={`transaction-amount ${transaction.amount > 0 ? "positive" : ""}`}>{transaction.amount > 0 ? "+" : ""}{transaction.amount}</span>
+      </div>
+    );
+  }
 
   return (
     <main className="light-page">
@@ -346,19 +370,33 @@ export default function AccountSectionPage() {
         )}
 
         {section === "transactions" && (
-          <article className="card">
-            {transactions.length ? transactions.map((transaction) => (
-              <div className="transaction-row" key={transaction.id}>
-                <div>
-                  <strong>{transaction.description}</strong>
-                  <small>{transaction.timestamp ? new Date(transaction.timestamp).toLocaleString() : ""}</small>
-                </div>
-                <span className={`transaction-amount ${transaction.amount > 0 ? "positive" : ""}`}>{transaction.amount > 0 ? "+" : ""}{transaction.amount}</span>
+          <>
+            <div className="tx-summary">
+              <p className="eyebrow dark">{t("section.transactions.summary")}</p>
+              <div className="tx-stats">
+                <div className="tx-stat"><strong>-{monthUsed}</strong><small>{t("section.transactions.usedMonth")}</small></div>
+                <div className="tx-stat"><strong>+{monthAdded}</strong><small>{t("section.transactions.addedMonth")}</small></div>
+                <div className="tx-stat"><strong>{monthCount}</strong><small>{t("section.transactions.opsMonth")}</small></div>
               </div>
-            )) : (
-              <div className="empty-state"><span><Icon name="sparkles" size={26} /></span><p>{t("section.transactions.empty")}</p></div>
-            )}
-          </article>
+            </div>
+            <article className="card">
+              <p className="eyebrow dark">{t("section.transactions.payments")}</p>
+              {payments.length ? payments.map(renderTransaction) : (
+                <div className="empty-state"><span><Icon name="sparkles" size={26} /></span><p>{t("section.transactions.noPayments")}</p></div>
+              )}
+            </article>
+            <article className="card" style={{ marginTop: 24 }}>
+              <button type="button" className="tx-toggle" onClick={() => setShowUsage((value) => !value)} aria-expanded={showUsage}>
+                <span>{t("section.transactions.usage").replace("{count}", String(usageList.length))}</span>
+                <span className={`tx-chevron ${showUsage ? "open" : ""}`} aria-hidden><Icon name="arrowRight" size={16} /></span>
+              </button>
+              {showUsage && (
+                usageList.length ? usageList.map(renderTransaction) : (
+                  <div className="empty-state"><span><Icon name="sparkles" size={26} /></span><p>{t("section.transactions.noUsage")}</p></div>
+                )
+              )}
+            </article>
+          </>
         )}
       </div>
       <SiteFooter />

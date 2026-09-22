@@ -28,6 +28,7 @@ export default function AccountSectionPage() {
   const [tag, setTag] = useState(preview ? previewUser.tag ?? "" : "");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [showUsage, setShowUsage] = useState(false);
 
   const load = useCallback(async () => {
     setMessage("");
@@ -107,10 +108,54 @@ export default function AccountSectionPage() {
       .catch((error: ApiError) => setMessage(error.message || t("common.error")));
   }
 
+  async function cancelSubscription() {
+    if (!plan?.current_period_end) return;
+    const endsOn = dateFmt(plan.current_period_end);
+    if (!window.confirm(t("section.subscription.cancelConfirm").replace("{date}", endsOn))) return;
+    if (preview) { setOk(true); setMessage(t("section.subscription.cancelled").replace("{date}", endsOn)); return; }
+    setBusy(true);
+    setMessage("");
+    try {
+      await api.cancelSubscription();
+      await load();
+      setOk(true);
+      setMessage(t("section.subscription.cancelled").replace("{date}", endsOn));
+    } catch (error) {
+      setOk(false);
+      setMessage((error as ApiError).message || t("common.error"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const href = (path: string) => (preview ? previewHref(path) : path);
+  const dateFmt = (value?: string | null) => (value ? new Date(value).toLocaleDateString() : "—");
   const usage = credits?.usage;
   const plan = credits?.plan;
   const percent = typeof usage?.percent === "number" ? Math.min(100, Math.max(0, usage.percent)) : 0;
+
+  const payments = transactions.filter((transaction) => transaction.amount > 0);
+  const usageList = transactions.filter((transaction) => transaction.amount <= 0);
+  const now = new Date();
+  const monthTransactions = transactions.filter((transaction) => {
+    const date = new Date(transaction.timestamp ?? "");
+    return !Number.isNaN(date.getTime()) && date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+  });
+  const monthUsed = monthTransactions.filter((transaction) => transaction.amount < 0).reduce((sum, transaction) => sum + Math.abs(transaction.amount), 0);
+  const monthAdded = monthTransactions.filter((transaction) => transaction.amount > 0).reduce((sum, transaction) => sum + transaction.amount, 0);
+  const monthCount = monthTransactions.length;
+
+  function renderTransaction(transaction: Transaction) {
+    return (
+      <div className="transaction-row" key={transaction.id}>
+        <div>
+          <strong>{transaction.description}</strong>
+          <small>{transaction.timestamp ? new Date(transaction.timestamp).toLocaleString() : ""}</small>
+        </div>
+        <span className={`transaction-amount ${transaction.amount > 0 ? "positive" : ""}`}>{transaction.amount > 0 ? "+" : ""}{transaction.amount}</span>
+      </div>
+    );
+  }
 
   return (
     <main className="light-page">
@@ -180,11 +225,30 @@ export default function AccountSectionPage() {
             </article>
             <article className="card">
               <p className="eyebrow dark">{t("section.subscription.manage")}</p>
-              <h2>{t("section.subscription.manageTitle")}</h2>
-              <p className="card-note">{t("section.subscription.manageDesc")}</p>
-              <div className="card-actions">
-                <button className="btn btn-outline" onClick={openPortal}>{t("section.subscription.openPortal")} →</button>
-              </div>
+              {plan && plan.active !== false ? (
+                <>
+                  <h2>{plan.cancel_at_period_end ? t("section.subscription.endsTitle") : t("section.subscription.renewsTitle")}</h2>
+                  <p className="card-note">
+                    {(plan.cancel_at_period_end ? t("section.subscription.endsBody") : t("section.subscription.renewsBody")).replace("{date}", dateFmt(plan.current_period_end))}
+                  </p>
+                  <div className="card-actions">
+                    {!plan.cancel_at_period_end && (
+                      <button className="btn btn-outline" onClick={cancelSubscription} disabled={busy}>
+                        {busy ? t("section.subscription.cancelling") : t("section.subscription.cancel")}
+                      </button>
+                    )}
+                    <button className="btn btn-outline" onClick={openPortal}>{t("section.subscription.openPortal")} →</button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h2>{t("section.subscription.manageTitle")}</h2>
+                  <p className="card-note">{t("section.subscription.manageDesc")}</p>
+                  <div className="card-actions">
+                    <button className="btn btn-outline" onClick={openPortal}>{t("section.subscription.openPortal")} →</button>
+                  </div>
+                </>
+              )}
             </article>
           </div>
         )}
@@ -228,19 +292,33 @@ export default function AccountSectionPage() {
         )}
 
         {section === "transactions" && (
-          <article className="card">
-            {transactions.length ? transactions.map((transaction) => (
-              <div className="transaction-row" key={transaction.id}>
-                <div>
-                  <strong>{transaction.description}</strong>
-                  <small>{transaction.timestamp ? new Date(transaction.timestamp).toLocaleString() : ""}</small>
-                </div>
-                <span className={`transaction-amount ${transaction.amount > 0 ? "positive" : ""}`}>{transaction.amount > 0 ? "+" : ""}{transaction.amount}</span>
+          <>
+            <div className="tx-summary">
+              <p className="eyebrow dark">{t("section.transactions.summary")}</p>
+              <div className="tx-stats">
+                <div className="tx-stat"><strong>-{monthUsed}</strong><small>{t("section.transactions.usedMonth")}</small></div>
+                <div className="tx-stat"><strong>+{monthAdded}</strong><small>{t("section.transactions.addedMonth")}</small></div>
+                <div className="tx-stat"><strong>{monthCount}</strong><small>{t("section.transactions.opsMonth")}</small></div>
               </div>
-            )) : (
-              <div className="empty-state"><span><Icon name="sparkles" size={26} /></span><p>{t("section.transactions.empty")}</p></div>
-            )}
-          </article>
+            </div>
+            <article className="card">
+              <p className="eyebrow dark">{t("section.transactions.payments")}</p>
+              {payments.length ? payments.map(renderTransaction) : (
+                <div className="empty-state"><span><Icon name="sparkles" size={26} /></span><p>{t("section.transactions.noPayments")}</p></div>
+              )}
+            </article>
+            <article className="card" style={{ marginTop: 24 }}>
+              <button type="button" className="tx-toggle" onClick={() => setShowUsage((value) => !value)} aria-expanded={showUsage}>
+                <span>{t("section.transactions.usage").replace("{count}", String(usageList.length))}</span>
+                <span className={`tx-chevron ${showUsage ? "open" : ""}`} aria-hidden><Icon name="arrowRight" size={16} /></span>
+              </button>
+              {showUsage && (
+                usageList.length ? usageList.map(renderTransaction) : (
+                  <div className="empty-state"><span><Icon name="sparkles" size={26} /></span><p>{t("section.transactions.noUsage")}</p></div>
+                )
+              )}
+            </article>
+          </>
         )}
       </div>
       <SiteFooter />

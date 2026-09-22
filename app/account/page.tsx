@@ -123,7 +123,7 @@ export default function AccountPage() {
             )}
 
             <div className="span-12">
-              <PlatformCards showCredits />
+              <PlatformCards />
             </div>
 
             <article className="card span-6">

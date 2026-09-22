@@ -31,7 +31,7 @@ export default function Home() {
             </div>
           </div>
           <div className="hero-art">
-            <img src="/hero-worlds.png" alt="From Zero To Hero" />
+            <img src="/hero-worlds.webp" alt="From Zero To Hero" />
             <span className="hero-art-caption">FROM ZERO TO HERO</span>
           </div>
         </div>
@@ -52,7 +52,7 @@ export default function Home() {
             </div>
             <a className="section-link" href={href("/platforms")}>{t("home.platformsLink")} →</a>
           </div>
-          <PlatformCards showCredits />
+          <PlatformCards />
         </div>
       </section>
 
@@ -67,7 +67,7 @@ export default function Home() {
           <div className="how-steps">
             {[1, 2, 3].map((step) => (
               <div className="how-step" key={step}>
-                <span className="how-step-num">{step}</span>
+                <span className="how-step-num"><Icon name={step === 1 ? "user" : step === 2 ? "crown" : "grid"} size={20} /></span>
                 <div><strong>{t(`home.step${step}t`)}</strong><p>{t(`home.step${step}d`)}</p></div>
               </div>
             ))}

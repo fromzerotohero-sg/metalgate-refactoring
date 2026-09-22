@@ -60,6 +60,7 @@ export const api = {
   resetPassword: (body: { token: string; password: string }) => request<{ message: string }>("/sso/reset-password", json(body)),
   subscribe: (plan_id: string) => request<{ session_id: string; url: string }>("/stripe/subscribe", json({ plan_id })),
   portal: (return_url?: string) => request<{ url: string }>("/stripe/portal", json(return_url ? { return_url } : {})),
+  cancelSubscription: () => request<{ message: string }>("/stripe/cancel", json({ cancel: true })),
   verifyEmailByApiRedirect: (token: string) => `${API_URL}/auth/verify?token=${encodeURIComponent(token)}`
 };
 
