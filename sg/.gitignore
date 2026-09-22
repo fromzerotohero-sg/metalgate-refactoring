@@ -1,0 +1,25 @@
+# Secrets. `.env` holds the Supabase service-role key, the JWT signing secret, the
+# Stripe secret and the admin code. Committing it would hand over the whole system.
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtualenvs. `.simvenv` is the local simulation interpreter.
+.venv/
+venv/
+.simvenv/
+
+# Vercel
+.vercel/
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/

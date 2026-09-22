@@ -1,0 +1,25 @@
+# Files excluded from the BACKEND Vercel project's upload and function bundle.
+#
+# The backend project's Root Directory is this `sg/` folder, which also contains
+# the Next.js app. The Python function never imports `frontend/`, so keeping it
+# out avoids shipping the whole frontend into the serverless bundle (and, on a
+# local `vercel deploy`, its `node_modules` as well).
+frontend/
+
+# Python bytecode is regenerated at runtime; in the bundle it is only weight.
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local virtualenvs, if a developer keeps one inside the project.
+.venv/
+venv/
+.simvenv/
+
+# Local secrets. Not committed, but `vercel deploy` uploads the working tree
+# rather than the git index, so this is the only thing standing between a stray
+# `.env` and a deployment artifact.
+.env
+.env.*

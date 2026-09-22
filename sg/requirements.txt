@@ -1,0 +1,23 @@
+# SilverGate backend — runtime dependencies.
+#
+# Deliberately absent: flask-sqlalchemy, sqlalchemy and psycopg2-binary.
+# Supabase is reached over PostgREST (HTTP), which pools naturally and is what
+# serverless hosting wants; there is no direct Postgres connection anywhere.
+# A shared rate-limit store needs its client library, hence `redis`.
+
+Flask==3.0.0
+flask-cors==4.0.0
+flask-limiter==3.5.0
+PyJWT==2.8.0
+python-dotenv==1.0.0
+requests==2.32.3
+stripe==7.14.0
+supabase==2.3.0
+# `send_campaign_batch` posts to Resend's batch endpoint directly, because the
+# `Idempotency-Key` header it needs is not exposed consistently across SDK
+# versions. The SDK is therefore only used for single sends, so the version is
+# bounded rather than pinned to a patch release: <3.0.0 keeps a future major
+# release from changing that API under a deploy, while still letting pip back off
+# to a version that agrees with the `httpx` range `supabase` pins.
+resend>=2.0.0,<3.0.0
+redis>=5.0.0
