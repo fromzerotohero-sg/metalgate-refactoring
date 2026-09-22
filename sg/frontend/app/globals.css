@@ -61,6 +61,8 @@ input, select, textarea { font-family: inherit; }
 .btn-outline:not(:disabled):hover { border-color: var(--blue); }
 .btn-dark { color: #fff; background: var(--navy-800); }
 .btn-block { width: 100%; }
+/* Google's mark is an svg beside the label, so the button lays out as a row. */
+.btn-google { display: inline-flex; align-items: center; justify-content: center; gap: 10px; }
 .btn .arrow { font-weight: 400; }
 
 /* ---------- Header ---------- */

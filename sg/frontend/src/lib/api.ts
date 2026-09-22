@@ -129,4 +129,20 @@ export const api = {
  * a link to it.
  */
 
+/**
+ * Where to send the browser to begin Google sign-in.
+ *
+ * A full-page navigation, not a fetch: the flow leaves this origin for Google's
+ * consent screen and returns with a session cookie, so it cannot be an XHR (and
+ * the API returns redirects, not JSON). `redirect` is a path on this app that the
+ * API sends the user back to once the handshake finishes.
+ *
+ * It goes through the API rather than to Google directly because the client
+ * secret and the account linking both live server-side.
+ */
+export function googleSignInUrl(redirect?: string): string {
+  const base = `${API_URL}/auth/google/start`;
+  return redirect ? `${base}?redirect=${encodeURIComponent(redirect)}` : base;
+}
+
 export { API_URL };

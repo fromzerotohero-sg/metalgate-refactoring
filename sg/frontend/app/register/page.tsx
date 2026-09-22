@@ -1,12 +1,12 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { api, ApiError } from "@/src/lib/api";
+import { api, ApiError, googleSignInUrl } from "@/src/lib/api";
 import { isLocalPreview, previewHref } from "@/src/lib/preview";
 import { useT } from "@/src/lib/i18n";
 import { SiteHeader } from "@/src/components/SiteHeader";
 import { SiteFooter } from "@/src/components/SiteFooter";
-import { Icon } from "@/src/components/Icon";
+import { GoogleMark, Icon } from "@/src/components/Icon";
 
 function safeReturnTo(value: string | null) {
   return value && value.startsWith("/") && !value.startsWith("//") ? value : "/account";
@@ -26,13 +26,23 @@ export default function RegisterPage() {
   const [deliveryFailed, setDeliveryFailed] = useState(false);
   const [busy, setBusy] = useState(false);
   const returnTo = useMemo(() => typeof window === "undefined" ? "/account" : safeReturnTo(new URLSearchParams(window.location.search).get("return_to") ?? new URLSearchParams(window.location.search).get("redirect")), []);
+  // The API reports the outcome of a Google handshake as ?oauth=<code> when it
+  // sends the browser back (see routes_google.py).
+  const oauthOutcome = useMemo(() => typeof window === "undefined" ? "" : (new URLSearchParams(window.location.search).get("oauth") ?? ""), []);
   const href = (path: string) => (preview ? previewHref(path) : path);
 
   useEffect(() => {
     if (preview) return;
+    if (oauthOutcome && oauthOutcome !== "success") {
+      setMessage(
+        oauthOutcome === "cancelled" ? t("login.googleCancelled")
+        : oauthOutcome === "unavailable" ? t("login.googleUnavailable")
+        : t("login.googleFailed")
+      );
+    }
     api.session().then(() => { window.location.href = returnTo; }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [oauthOutcome]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -142,6 +152,11 @@ export default function RegisterPage() {
                   {message && <p className="form-error" role="alert">{message}</p>}
                   <button className="btn btn-primary btn-block" disabled={busy}>{busy ? t("register.submitting") : t("register.submit")} <span className="arrow" aria-hidden>→</span></button>
                 </form>
+                <div className="auth-divider">{t("login.divider")}</div>
+                <a className="btn btn-outline btn-block btn-google" href={preview ? href(returnTo) : googleSignInUrl(returnTo)}>
+                  <GoogleMark size={18} />
+                  <span>{t("register.googleCta")}</span>
+                </a>
                 <p className="auth-switch">{t("register.haveAccount")} <a href={href(`/login?return_to=${encodeURIComponent(returnTo)}`)}>{t("register.login")}</a></p>
               </>
             )}

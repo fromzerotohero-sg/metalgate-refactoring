@@ -1,12 +1,12 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { api, ApiError } from "@/src/lib/api";
+import { api, ApiError, googleSignInUrl } from "@/src/lib/api";
 import { isLocalPreview, previewHref } from "@/src/lib/preview";
 import { useT } from "@/src/lib/i18n";
 import { SiteHeader } from "@/src/components/SiteHeader";
 import { SiteFooter } from "@/src/components/SiteFooter";
-import { Icon } from "@/src/components/Icon";
+import { GoogleMark, Icon } from "@/src/components/Icon";
 
 function safeReturnTo(value: string | null) {
   return value && value.startsWith("/") && !value.startsWith("//") ? value : "/account";
@@ -23,11 +23,22 @@ export default function LoginPage() {
   const [checking, setChecking] = useState(!preview);
   const [verificationRequired, setVerificationRequired] = useState(false);
   const returnTo = useMemo(() => typeof window === "undefined" ? "/account" : safeReturnTo(new URLSearchParams(window.location.search).get("return_to") ?? new URLSearchParams(window.location.search).get("redirect")), []);
+  // The API reports the outcome of a Google handshake as ?oauth=<code> when it
+  // sends the browser back (see routes_google.py).
+  const oauthOutcome = useMemo(() => typeof window === "undefined" ? "" : (new URLSearchParams(window.location.search).get("oauth") ?? ""), []);
 
   useEffect(() => {
     if (preview) { setChecking(false); return; }
+    if (oauthOutcome && oauthOutcome !== "success") {
+      setMessage(
+        oauthOutcome === "cancelled" ? t("login.googleCancelled")
+        : oauthOutcome === "unavailable" ? t("login.googleUnavailable")
+        : t("login.googleFailed")
+      );
+    }
     api.session().then(() => { window.location.href = returnTo; }).catch(() => setChecking(false));
-  }, [preview, returnTo]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preview, returnTo, oauthOutcome]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -122,7 +133,11 @@ export default function LoginPage() {
               <button className="btn btn-primary btn-block" disabled={busy}>{busy ? t("login.submitting") : t("login.submit")} <span className="arrow" aria-hidden>→</span></button>
             </form>
             <div className="auth-divider">{t("login.divider")}</div>
-            <a className="btn btn-outline btn-block" href={`/register?return_to=${encodeURIComponent(returnTo)}${preview ? "&preview=1" : ""}`}>{t("login.create")}</a>
+            <a className="btn btn-outline btn-block btn-google" href={preview ? href(returnTo) : googleSignInUrl(returnTo)}>
+              <GoogleMark size={18} />
+              <span>{t("login.googleCta")}</span>
+            </a>
+            <a className="btn btn-outline btn-block" href={`/register?return_to=${encodeURIComponent(returnTo)}${preview ? "&preview=1" : ""}`} style={{ marginTop: 10 }}>{t("login.create")}</a>
             <div className="auth-note">
               <span className="auth-note-icon" aria-hidden><Icon name="infinity" size={18} /></span>
               <div><strong>{t("login.noteTitle")}</strong><small>{t("login.noteSub")}</small></div>

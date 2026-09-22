@@ -5,6 +5,7 @@
 | `002_sessions_and_sso.sql` | **REQUIRED.** Apply before deploying. |
 | `003_plans_and_subscriptions.sql` | **REQUIRED.** Apply before deploying. |
 | `004_admin_audit_and_reset_attempts.sql` | **REQUIRED.** Apply before deploying. |
+| `005_google_oauth.sql` | **REQUIRED for Google sign-in.** Apply before enabling the Google button. |
 | `setup_referrals.sql` | Already applied. Historical **— but see the warning below.** |
 | `add_temp_credits.sql` | Already applied. Historical. |
 | `setup_password_resets.sql` | Already applied. Historical. |
@@ -14,6 +15,7 @@
 psql "$SUPABASE_DB_URL" -f 002_sessions_and_sso.sql
 psql "$SUPABASE_DB_URL" -f 003_plans_and_subscriptions.sql
 psql "$SUPABASE_DB_URL" -f 004_admin_audit_and_reset_attempts.sql
+psql "$SUPABASE_DB_URL" -f 005_google_oauth.sql
 ```
 
 ## Why the historical files are kept but should not be re-run

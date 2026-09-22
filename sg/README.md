@@ -94,13 +94,15 @@ in `accounts.py`, `credits.py`, `plans.py` or `auth.py`.
 psql "$SUPABASE_DB_URL" -f sql/002_sessions_and_sso.sql
 psql "$SUPABASE_DB_URL" -f sql/003_plans_and_subscriptions.sql
 psql "$SUPABASE_DB_URL" -f sql/004_admin_audit_and_reset_attempts.sql
+psql "$SUPABASE_DB_URL" -f sql/005_google_oauth.sql
 ```
 
-All three are required and all three are additive and idempotent. `002` creates
+All are additive and idempotent. `002` creates
 `sessions`, `auth_codes` and `login_events` and adds the activity timestamps;
 `003` adds `subscriptions`, `stripe_events` and the period usage counter, and is
 required for plans; `004` adds `admin_audit_log` and the reset-code attempt
-counter.
+counter; `005` adds `oauth_identities`, which only Google sign-in needs — without
+it every other sign-in path is unaffected.
 
 ---
 
@@ -267,6 +269,27 @@ Set `SG_SESSION_COOKIE_DOMAIN` or none of this works — see `.env.example`.
 | DELETE | `/api/auth/sessions/<id>` | Sign one device out |
 | POST | `/api/auth/change-password` | Revokes all other sessions |
 | POST | `/api/sso/forgot-password` · `/verify-reset-code` · `/reset-password` | Reset revokes all sessions |
+
+### Google sign-in
+
+Google is an external identity provider, not a second session mechanism: the
+verified identity is matched to a `users` row and an ordinary session is issued
+from it, so everything after the callback is identical to a password login.
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/auth/google/start?redirect=/path` | Redirects to Google. `redirect` is a **relative path on the frontend**, never an absolute URL |
+| GET | `/api/auth/google/callback` | Google calls this. Exchanges the code, verifies the ID token, links or creates the account, sets the session cookie, then redirects to `{SG_APP_URL}{redirect}?oauth=<outcome>` |
+
+`oauth` is `success`, `cancelled`, `invalid`, `failed` or `unavailable`, and the
+login and registration pages translate it. Both endpoints are reached by a
+top-level navigation, so neither returns JSON — every outcome is a redirect to a
+page that can explain it.
+
+Requires `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `005_google_oauth.sql`,
+plus the callback registered as an **exact** authorized redirect URI on the OAuth
+client. A deployment with no client ID reports `?oauth=unavailable` rather than
+offering a button that cannot work.
 
 ### Plans and billing
 

@@ -165,6 +165,10 @@ def _register_blueprints(app: Flask) -> None:
 
     app.register_blueprint(sso_bp, url_prefix="/api")
 
+    from routes_google import google_bp
+
+    app.register_blueprint(google_bp, url_prefix="/api")
+
     from routes_streamer import bp as streamer_bp
 
     app.register_blueprint(streamer_bp, url_prefix="/api")

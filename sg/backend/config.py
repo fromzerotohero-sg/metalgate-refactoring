@@ -237,6 +237,25 @@ class Config:
     # the user *and* creates their session in one navigation (architecture/04 §4).
     EMAIL_VERIFY_VIA_API = _bool("SG_EMAIL_VERIFY_VIA_API", False)
 
+    # ── Google sign-in (OpenID Connect) ────────────────────────────────────
+    # Optional integration. With no client ID the /api/auth/google/* endpoints
+    # send the browser back with `?oauth=unavailable` rather than failing, so the
+    # frontend can simply not offer the button.
+    #
+    # The secret is used only for the server-to-server code exchange and must
+    # never reach a browser or a frontend environment variable.
+    GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
+    GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
+    # Must match an authorized redirect URI on the OAuth client EXACTLY: Google
+    # rejects a mismatch before the request reaches this service, so the failure
+    # reads as a Google-side error rather than a configuration mistake. Derived
+    # from API_PUBLIC_URL, which is correct whenever the API is reached at its
+    # public address.
+    GOOGLE_REDIRECT_URI = (
+        os.environ.get("SG_GOOGLE_REDIRECT_URI")
+        or f"{API_PUBLIC_URL}/api/auth/google/callback"
+    )
+
     # Where Stripe returns the payer. Absolute and configuration-driven, so a
     # subscription always lands on SilverGate's own account page — including when a
     # platform started the checkout. The account page reads `?subscription=` to show
@@ -476,3 +495,16 @@ class Config:
             logger.warning(
                 "STRIPE_SECRET_KEY is unset: subscriptions cannot be created or managed."
             )
+
+        # Half-configured Google sign-in is worth shouting about: the button will
+        # be offered and every attempt will fail, because the code exchange cannot
+        # complete without the secret.
+        if bool(cls.GOOGLE_CLIENT_ID) != bool(cls.GOOGLE_CLIENT_SECRET):
+            message = (
+                "Only one of GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET is set, so "
+                "Google sign-in cannot complete. Set both, or neither."
+            )
+            if cls.IS_PRODUCTION:
+                logger.error(message)
+            else:
+                logger.warning(message)
