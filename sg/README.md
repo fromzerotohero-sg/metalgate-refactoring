@@ -152,7 +152,7 @@ platform can call it directly on the signed-in user's behalf.
     "show": true, "reason": "within_threshold", "threshold_percent": 90,
     "next_plan": { "id": "ultra", "name": "Ultra", "credits_per_period": 750 },
     "cta_label": "Upgrade to Ultra to have higher limits",
-    "url": "https://fromzerotohero.io/pricing"
+    "url": "https://silver.fromzerotohero.io/pricing"
   }
 }
 ```
@@ -482,7 +482,9 @@ implementation against the published RFC 6238 test vectors.
   consequence of the requirement: one cookie on `.fromzerotohero.io` is what makes "log
   in once" work, so a script injected into any one platform can read the session for all
   of them. Mitigation belongs in the frontends (a strict CSP on every platform) and in
-  keeping the cookie `HttpOnly` everywhere. There is no server-side fix.
+  keeping the cookie `HttpOnly` everywhere. There is no server-side fix. *(Interim: the
+  cutover deployment keeps the cookie host-only while `www.fromzerotohero.io` still
+  serves another application, which contains the blast radius but not the design.)*
 - **A sibling subdomain can overwrite the shared cookie.** Same root cause.
 - **The admin audit log records actions, not intent** — method, path, status, address.
   It answers "what was touched", not "was that a good idea". Real operator identities
@@ -546,6 +548,9 @@ Set in the API project:
 - All required secrets, plus `SUPABASE_URL` / `SUPABASE_KEY` (service-role; server-side only).
 - `SG_SESSION_COOKIE_DOMAIN=.fromzerotohero.io` — **a custom domain is mandatory.**
   `vercel.app` is on the Public Suffix List, so browsers reject cookies scoped to it.
+  *(Interim: on the current cutover it is empty/host-only for the reason above, with
+  `SG_REQUIRE_SHARED_COOKIE=false`. Restore both together once every
+  `*.fromzerotohero.io` host is SilverGate's.)*
 - `SG_RATELIMIT_STORAGE_URI` — a shared store (e.g. `rediss://…`). The default
   `memory://` enforces nothing across serverless instances, and production
   refuses to start with it.

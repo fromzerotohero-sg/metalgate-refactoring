@@ -33,6 +33,13 @@ Il cookie di sessione è condiviso da **tutte** le piattaforme del brand
 dell'utente su tutte. Per questo il controllo più importante di questo deployment è la
 Content-Security-Policy.
 
+> **Nota (cutover).** In produzione il cookie è per ora **host-only**
+> (`SG_SESSION_COOKIE_DOMAIN` vuoto): `www.fromzerotohero.io` è ancora servito da
+> un'altra applicazione e un cookie `.fromzerotohero.io` verrebbe inviato anche lì.
+> Il frontend fa da proxy per `/api/*` sul proprio origin, quindi il cookie è
+> first-party e il login funziona comunque. La CSP resta comunque il controllo più
+> importante.
+
 - **`middleware.ts`** genera un nonce per richiesta e imposta la CSP con `script-src
   'nonce-…' 'strict-dynamic'`. Un nonce (e non `'unsafe-inline'`) è l'unica forma che
   blocca davvero uno script inline iniettato.
@@ -40,8 +47,9 @@ Content-Security-Policy.
   script di Next e rende ogni route dinamica. In `next build` tutte le route
   risulteranno `ƒ (Dynamic)`: è voluto, una pagina prerenderizzata porterebbe un nonce
   vecchio.
-- **`next.config.mjs`** imposta HSTS (l'header dell'API copre solo `api.…`; HSTS è
-  host-scoped, quindi l'apex ha bisogno del suo), `X-Content-Type-Options`,
+- **`next.config.mjs`** imposta HSTS (l'header dell'API copre solo il suo host,
+  `v2.…`; HSTS è host-scoped, quindi questo origin ha bisogno del suo),
+  `X-Content-Type-Options`,
   `Referrer-Policy: no-referrer` (`/verify-email` porta un token nella query string),
   `X-Frame-Options` e `Permissions-Policy`.
 
@@ -58,7 +66,7 @@ white screen).
 ```
 {
   key: "Content-Security-Policy",
-  value: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://api.fromzerotohero.io; form-action 'self'; frame-ancestors 'none'; base-uri 'self'; object-src 'none'; upgrade-insecure-requests"
+  value: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://v2.fromzerotohero.io; form-action 'self'; frame-ancestors 'none'; base-uri 'self'; object-src 'none'; upgrade-insecure-requests"
 }
 ```
 

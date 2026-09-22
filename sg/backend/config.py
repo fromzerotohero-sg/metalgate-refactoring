@@ -110,6 +110,7 @@ def _plan_order(plans: dict) -> list:
 # Origins used before SG_CORS_ORIGINS is configured. These mirror the set that
 # the previous deployment served, plus local development.
 _DEFAULT_CORS_ORIGINS = [
+    "https://silver.fromzerotohero.io",
     "https://fromzerotohero.io",
     "https://efootball.fromzerotohero.io",
     "http://localhost",
@@ -217,11 +218,16 @@ class Config:
     TEMP_GRANT_TTL_DAYS = _int("SG_TEMP_GRANT_TTL_DAYS", 7)
 
     # ── Public URLs ─────────────────────────────────────────────────────────
-    # The frontend is served from the brand apex; the API lives on an `api.`
-    # subdomain. That is the same registrable domain, so the session cookie — which
-    # is scoped to `.fromzerotohero.io` — is sent to both, the flow is same-site
-    # (so `SameSite=Lax` is enough), and no redirect handshake is needed.
-    APP_URL = (os.environ.get("SG_APP_URL") or "https://fromzerotohero.io").rstrip("/")
+    # The frontend is served from `silver.` and the API from `v2.`, both under the
+    # same registrable domain. The browser only ever talks to the frontend, which
+    # proxies /api/* to this service, so the session cookie stays first-party and
+    # the flow is same-site (`SameSite=Lax` is enough) with no redirect handshake.
+    #
+    # `silver.` is a TEMPORARY hostname for the frontend; the API's `v2.` is
+    # intended to be permanent. Renaming the frontend touches only the values here
+    # and in the deployment's environment — nothing in the code depends on either
+    # name, so there is nothing else to change.
+    APP_URL = (os.environ.get("SG_APP_URL") or "https://silver.fromzerotohero.io").rstrip("/")
     LOGIN_URL = os.environ.get("SG_LOGIN_URL") or f"{APP_URL}/login"
     # Where a user is sent when we have no better destination: after verifying from a
     # link that carried no `redirect`, and when returning from the Stripe portal.
@@ -231,7 +237,7 @@ class Config:
     # Public base URL of this API, used to build verification links that point
     # straight at the backend (see SG_EMAIL_VERIFY_VIA_API below).
     API_PUBLIC_URL = (
-        os.environ.get("SG_API_PUBLIC_URL") or "https://api.fromzerotohero.io"
+        os.environ.get("SG_API_PUBLIC_URL") or "https://v2.fromzerotohero.io"
     ).rstrip("/")
     # When true, verification emails link straight to the API, which promotes
     # the user *and* creates their session in one navigation (architecture/04 §4).

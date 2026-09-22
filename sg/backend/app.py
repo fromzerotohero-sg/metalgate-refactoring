@@ -203,8 +203,8 @@ def _register_security_headers(app: Flask) -> None:
         if request.path.startswith("/api/"):
             response.headers.setdefault("Cache-Control", "no-store")
 
-        # Host-scoped: this covers api.fromzerotohero.io and its subdomains. The
-        # apex and the other platforms need their own HSTS header, which is the
+        # Host-scoped: this covers v2.fromzerotohero.io and its subdomains. This
+        # frontend and the other platforms need their own HSTS header, which is the
         # frontend deployment's job.
         if app.config["IS_PRODUCTION"]:
             response.headers.setdefault(

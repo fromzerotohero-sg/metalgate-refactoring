@@ -26,7 +26,7 @@ import { NextRequest, NextResponse } from "next/server";
  */
 
 const API_URL_GLOBAL =
-  process.env.NEXT_PUBLIC_API_URL ?? "https://api.fromzerotohero.io/api";
+  process.env.NEXT_PUBLIC_API_URL ?? "https://v2.fromzerotohero.io/api";
 
 /**
  * The extra origin `connect-src` has to allow.

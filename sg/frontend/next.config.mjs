@@ -17,8 +17,8 @@
  * keeps working with a weaker (non-nonce) policy while you debug.
  */
 const SECURITY_HEADERS = [
-  // The API's own HSTS header covers only api.fromzerotohero.io. HSTS is
-  // host-scoped, so the apex needs its own.
+  // The API's own HSTS header covers only its own host (v2.fromzerotohero.io).
+  // HSTS is host-scoped, so this origin needs its own.
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   // `/verify-email` holds a single-use verification token in its query string, so

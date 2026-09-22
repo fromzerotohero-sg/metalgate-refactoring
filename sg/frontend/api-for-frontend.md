@@ -53,17 +53,18 @@ login form to a signed-in user is the bug the old `login.html` had.
 
 | | |
 |---|---|
-| Production | `https://api.fromzerotohero.io/api` |
+| Production | `https://v2.fromzerotohero.io/api` |
 | Local development | `http://localhost:4001/api` (see §11) |
 
 All paths below are relative to that base. So `GET /api/session` means
-`GET https://api.fromzerotohero.io/api/session`.
+`GET https://v2.fromzerotohero.io/api/session`.
 
-The frontend is served from the **apex** (`https://fromzerotohero.io`) and the API
-from an `api.` subdomain. Those are the same registrable domain, so the session
-cookie — scoped to `.fromzerotohero.io` — is sent to both, the calls are
-same-site, and no redirect handshake is involved. That is what makes the shared
-login work.
+The frontend is served from `https://silver.fromzerotohero.io` and the API from
+`https://v2.fromzerotohero.io` — the same registrable domain. The browser only ever
+talks to the frontend, which proxies `/api/*` to the API, so the session cookie stays
+first-party: the calls are same-site and no redirect handshake is involved. That is
+what makes the shared login work. (`silver.` is a temporary frontend hostname; `v2.`
+is the API's permanent one — only the frontend's environment changes if it is renamed.)
 
 ---
 
@@ -325,7 +326,7 @@ action.
     "next_plan": { "id": "ultra", "name": "Ultra", "credits_per_period": 750,
                    "price_display": "€29.99", "interval": "month" },
     "cta_label": "Upgrade to Ultra to have higher limits",
-    "url": "https://fromzerotohero.io/pricing"
+    "url": "https://silver.fromzerotohero.io/pricing"
   }
 }
 ```
@@ -442,7 +443,7 @@ email", do not redirect to the dashboard.
 ### Verification link
 
 The link in the verification email points at the **frontend** page
-(`SG_EMAIL_VERIFICATION_URL`, `https://fromzerotohero.io/verify-email` by default),
+(`SG_EMAIL_VERIFICATION_URL`, `https://silver.fromzerotohero.io/verify-email` by default),
 carrying `?token=…` and, when the registration passed one, `&redirect=…`. That page
 calls the endpoint below, which sets the session cookie, so the user is signed in
 without ever filling in a login form.

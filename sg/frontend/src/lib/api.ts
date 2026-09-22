@@ -1,4 +1,4 @@
-const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "https://api.fromzerotohero.io/api").replace(/\/$/, "");
+const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "https://v2.fromzerotohero.io/api").replace(/\/$/, "");
 
 export type SessionUser = { id: string; email: string; username?: string; tag?: string; email_verified?: boolean };
 
