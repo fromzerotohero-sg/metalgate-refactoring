@@ -139,10 +139,18 @@ export const api = {
  *
  * It goes through the API rather than to Google directly because the client
  * secret and the account linking both live server-side.
+ *
+ * `referral` is the code the user arrived through. It travels in the URL because
+ * the callback is a cross-origin navigation with no header of its own to carry it;
+ * the API folds it into the signed OAuth `state` so a forged one cannot attribute
+ * a sign-up, and applies it only when it actually creates the account.
  */
-export function googleSignInUrl(redirect?: string): string {
-  const base = `${API_URL}/auth/google/start`;
-  return redirect ? `${base}?redirect=${encodeURIComponent(redirect)}` : base;
+export function googleSignInUrl(redirect?: string, referral?: string): string {
+  const parameters = new URLSearchParams();
+  if (redirect) parameters.set("redirect", redirect);
+  if (referral) parameters.set("ref", referral);
+  const query = parameters.toString();
+  return `${API_URL}/auth/google/start${query ? `?${query}` : ""}`;
 }
 
 export { API_URL };

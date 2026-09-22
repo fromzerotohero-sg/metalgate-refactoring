@@ -25,9 +25,21 @@ import { NextRequest, NextResponse } from "next/server";
  * once at build time would carry a stale nonce and have its own scripts blocked.
  */
 
-const API_ORIGIN =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/api\/?$/, "").replace(/\/$/, "") ||
-  "https://api.fromzerotohero.io";
+const API_URL_GLOBAL =
+  process.env.NEXT_PUBLIC_API_URL ?? "https://api.fromzerotohero.io/api";
+
+/**
+ * The extra origin `connect-src` has to allow.
+ *
+ * A relative `NEXT_PUBLIC_API_URL` means the API is reached through this origin
+ * (see the proxy in `next.config.mjs`), and `'self'` already covers it — so there
+ * is no second origin to add. Deriving one by stripping `/api` off a path would
+ * leave an empty string that falls back to the brand origin, silently widening the
+ * policy to an origin this deployment never talks to.
+ */
+const API_ORIGIN = API_URL_GLOBAL.startsWith("/")
+  ? ""
+  : API_URL_GLOBAL.replace(/\/api\/?$/, "").replace(/\/$/, "");
 
 function buildPolicy(nonce: string, isDev: boolean) {
   return [
@@ -40,8 +52,9 @@ function buildPolicy(nonce: string, isDev: boolean) {
     // same-origin files under /public.
     "img-src 'self' data: blob:",
     "font-src 'self' data:",
-    // The only network origin this app talks to.
-    `connect-src 'self' ${API_ORIGIN}`,
+    // The only network origin this app talks to — plus, when the API is served
+    // from this origin, nothing at all.
+    `connect-src 'self'${API_ORIGIN ? ` ${API_ORIGIN}` : ""}`,
     "form-action 'self'",
     "frame-ancestors 'none'",
     "base-uri 'self'",

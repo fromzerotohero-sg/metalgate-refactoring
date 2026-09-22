@@ -18,7 +18,10 @@ login and registration pages translate:
 
 Nothing but `state` is trusted on the way back in, and `state` is a signed,
 short-lived token (see `google_oauth`), so a forged callback cannot establish a
-session.
+session. That extends to the referral code: it is carried inside `state` rather
+than a cookie, because the trip to Google leaves this origin and a cookie set
+here would not come back with a callback, which is a navigation and cannot carry
+a header either.
 """
 
 from __future__ import annotations
@@ -34,6 +37,7 @@ import accounts
 import auth
 import db
 import google_oauth
+import referrals
 import sessions
 from extensions import limiter
 
@@ -81,7 +85,9 @@ def google_start():
     Send the browser to Google.
 
     `redirect` is where the user should land afterwards — a path on this
-    application, never an absolute URL.
+    application, never an absolute URL. `ref` is the referral code the user
+    arrived through, if any; it is normalised here so that whatever reaches the
+    signed state is already known to be a code and nothing else.
     """
     return_path = _safe_return_path(request.args.get("redirect"))
 
@@ -98,6 +104,9 @@ def google_start():
             "nonce": secrets.token_urlsafe(16),
             "verifier": verifier,
             "redirect": return_path,
+            # Carried so that a signup completed through Google can still credit
+            # whoever referred the user. Only the account-creation path reads it.
+            "ref": referrals.normalize_code(request.args.get("ref")),
         },
         lifetime=dt.timedelta(minutes=STATE_TTL_MINUTES),
     )
@@ -136,7 +145,7 @@ def google_callback():
         tokens = google_oauth.exchange_code(code, payload.get("verifier") or "")
         claims = google_oauth.verify_id_token(tokens["id_token"])
         client = db.require_client()
-        user = google_oauth.link_or_create_user(client, claims)
+        user = google_oauth.link_or_create_user(client, claims, payload.get("ref"))
     except google_oauth.GoogleAuthError as exc:
         logger.warning("Google sign-in rejected (%s).", exc.reason)
         return redirect(_frontend_url(return_path, "failed"), code=302)

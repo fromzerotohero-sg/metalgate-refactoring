@@ -34,11 +34,41 @@ const SECURITY_HEADERS = [
   { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
 ];
 
+/**
+ * Where the API actually lives, for the proxy below.
+ *
+ * Deliberately NOT a `NEXT_PUBLIC_` variable: it is only ever read here, at build
+ * time, and never needs to reach the browser. The browser is told to call `/api`.
+ */
+const API_PROXY_TARGET = (process.env.API_PROXY_TARGET ?? "").replace(/\/$/, "");
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   images: { unoptimized: true },
   // Do not advertise the framework version.
   poweredByHeader: false,
+  /**
+   * Serve the API from this origin.
+   *
+   * This is not an optimisation, it is the thing that makes sign-in work at all.
+   * Two `*.vercel.app` hosts are different registrable domains (vercel.app is on
+   * the Public Suffix List), so a session cookie set by the API is a *third-party*
+   * cookie from the browser's point of view — and browsers drop those. Safari
+   * blocks them outright and Chrome increasingly does. The symptom is a login that
+   * reports 200 and issues a cookie, but never persists: every follow-up request is
+   * unauthenticated, so the user is bounced straight back to the form.
+   *
+   * With the API proxied through this origin the cookie is first-party, which is
+   * the only arrangement that works between two `*.vercel.app` hosts. It also takes
+   * CORS out of the picture entirely and lets the session cookie stay
+   * `SameSite=Lax`.
+   */
+  async rewrites() {
+    // No target configured (a local `next dev` with no proxy, say): fall through to
+    // whatever absolute `NEXT_PUBLIC_API_URL` the client was built with.
+    if (!API_PROXY_TARGET) return [];
+    return [{ source: "/api/:path*", destination: `${API_PROXY_TARGET}/api/:path*` }];
+  },
   async headers() {
     return [
       {

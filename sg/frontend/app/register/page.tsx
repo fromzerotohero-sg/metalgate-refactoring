@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { api, ApiError, googleSignInUrl } from "@/src/lib/api";
 import { isLocalPreview, previewHref } from "@/src/lib/preview";
 import { useT } from "@/src/lib/i18n";
+import { getReferralCode } from "@/src/lib/referral";
 import { SiteHeader } from "@/src/components/SiteHeader";
 import { SiteFooter } from "@/src/components/SiteFooter";
 import { GoogleMark, Icon } from "@/src/components/Icon";
@@ -43,6 +44,12 @@ export default function RegisterPage() {
     api.session().then(() => { window.location.href = returnTo; }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [oauthOutcome]);
+
+  // A `?ref=` link prefills the invite field so the user does not have to retype the
+  // code, and the same value is what the Google button carries — so a sign-up
+  // completed through Google is attributed too, instead of the streamer being lost.
+  // Read in an effect, not during render: the server has no storage.
+  useEffect(() => { setReferralCode(getReferralCode()); }, []);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -153,7 +160,7 @@ export default function RegisterPage() {
                   <button className="btn btn-primary btn-block" disabled={busy}>{busy ? t("register.submitting") : t("register.submit")} <span className="arrow" aria-hidden>→</span></button>
                 </form>
                 <div className="auth-divider">{t("login.divider")}</div>
-                <a className="btn btn-outline btn-block btn-google" href={preview ? href(returnTo) : googleSignInUrl(returnTo)}>
+                <a className="btn btn-outline btn-block btn-google" href={preview ? href(returnTo) : googleSignInUrl(returnTo, referralCode)}>
                   <GoogleMark size={18} />
                   <span>{t("register.googleCta")}</span>
                 </a>

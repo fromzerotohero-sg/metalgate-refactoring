@@ -31,6 +31,7 @@ import auth
 import billing
 import db
 import plans
+import referrals
 import sessions
 from auth_utils import hash_password, verify_password
 from constants import (
@@ -185,24 +186,14 @@ def register():
 
 
 def _apply_referral(user_data: dict, referral_code: str) -> None:
-    """Resolve a referral code against streamers first, then ordinary users."""
-    streamer = (
-        db.require_client()
-        .table("credentials")
-        .select("streamer_id")
-        .eq("id_code", referral_code)
-        .execute()
-    )
-    if streamer.data:
-        user_data["referred_by_streamer"] = streamer.data[0]["streamer_id"]
-        logger.info("Referral resolved to streamer %s", user_data["referred_by_streamer"])
-        return
+    """
+    Stamp the referring streamer or user onto a pending registration.
 
-    referrer = (
-        db.require_client().table("users").select("id").eq("referral_code", referral_code).execute()
-    )
-    if referrer.data:
-        user_data["referred_by"] = referrer.data[0]["id"]
+    Delegates to `referrals` so that the register form, the emailed-verification
+    promotion and Google sign-in all resolve and record a referral the same way.
+    Settlement is a separate step: it happens when the registration is verified.
+    """
+    referrals.attribute(db.require_client(), user_data, referral_code)
 
 
 # ── Login ───────────────────────────────────────────────────────────────────

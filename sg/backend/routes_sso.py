@@ -39,15 +39,14 @@ import auth
 import db
 import plans
 import platforms
+import referrals
 import sessions
 from auth_utils import hash_password
 from constants import (
     REVOKE_PASSWORD_RESET,
     TOKEN_TYPE_EMAIL_VERIFICATION,
     TOKEN_TYPE_PASSWORD_RESET,
-    TX_BONUS,
 )
-from credits import add_temp_credits, record_transaction
 from email_service import EmailService
 from extensions import limiter
 
@@ -157,37 +156,13 @@ def _promote_temp_user(temp_user: dict) -> dict:
 
 def _award_referral_bonus(user: dict) -> None:
     """
-    Give the referring account its bonus, as a **temporary** credit grant.
+    Pay the referrer now that the registration has been verified.
 
-    It must not go to `credits_balance`: that is the subscription allowance, owned
-    by Stripe, and adding to it would inflate the allowance and push the usage bar
-    negative. Temporary credits are the only correct bucket for a bonus, and they
-    lapse — a year, by default, so a referral reward is effectively permanent
-    without becoming a liability that never expires.
+    Delegates to `referrals.settle`, which is the same call the Google path makes
+    when it creates an account — the two moments at which a referral is real
+    enough to be worth paying, and the only two places it can be paid from.
     """
-    referrer_id = user.get("referred_by")
-    if not referrer_id:
-        return
-
-    amount = current_app.config["REFERRAL_BONUS_CREDITS"]
-    ttl_days = current_app.config["REFERRAL_BONUS_TTL_DAYS"]
-
-    try:
-        # Raises ValueError if the referrer no longer exists.
-        add_temp_credits(db.require_client(), referrer_id, amount, ttl_days=ttl_days)
-
-        record_transaction(
-            db.require_client(),
-            referrer_id,
-            amount,
-            TX_BONUS,
-            f"Referral bonus for {user.get('username') or user['email']} "
-            f"(expires in {ttl_days} days)",
-        )
-
-        logger.info("Awarded %s referral credits to %s", amount, referrer_id)
-    except Exception as exc:
-        logger.error("Failed to award referral bonus for %s: %s", user["id"], exc)
+    referrals.settle(db.require_client(), user)
 
 
 def _resolve_email_token(token: str):

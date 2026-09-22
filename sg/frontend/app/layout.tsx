@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { Manrope } from "next/font/google";
 import { I18nProvider } from "@/src/lib/i18n";
+import { ReferralCapture } from "@/src/components/ReferralCapture";
 import "./globals.css";
 
 const manrope = Manrope({ subsets: ["latin"], variable: "--font-app", display: "swap" });
@@ -28,7 +29,14 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   return (
     <html lang="it" className={manrope.variable}>
       <body>
-        <I18nProvider>{children}</I18nProvider>
+        <I18nProvider>
+          {children}
+          {/*
+            * Mounted here, not on /register, so that a referral link to ANY page
+            * is captured before the user navigates away from it.
+            */}
+          <ReferralCapture />
+        </I18nProvider>
       </body>
     </html>
   );

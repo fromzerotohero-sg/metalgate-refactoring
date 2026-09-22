@@ -52,6 +52,7 @@ import jwt
 import requests
 from flask import current_app
 
+import referrals
 import sessions
 
 logger = logging.getLogger(__name__)
@@ -246,13 +247,19 @@ def verify_id_token(id_token: str) -> dict:
 
 # ── Account linking ─────────────────────────────────────────────────────────
 
-def link_or_create_user(client, claims: dict) -> dict:
+def link_or_create_user(client, claims: dict, referral_code: str | None = None) -> dict:
     """
     Resolve the SilverGate user for a verified Google identity.
 
     Order matters. An existing link wins, so a user who has changed their Google
     address keeps the same account; only then is the (Google-verified) email used
     to adopt an existing account, and only then is a new one created.
+
+    `referral_code` is the code the user arrived through, carried in the signed
+    `state` (see `routes_google`). It attributes a **new** account only. An
+    existing row was attributed when it was created, and re-stamping it here
+    would let anyone re-attribute somebody else's account simply by signing in
+    with Google — which is also a way to farm the referral bonus.
     """
     subject = str(claims.get("sub") or "").strip()
     email = (claims.get("email") or "").strip().lower()
@@ -279,9 +286,20 @@ def link_or_create_user(client, claims: dict) -> dict:
         _absorb_pending_registration(client, email)
         return user
 
-    user = _create_user(client, email, claims)
+    # Read the pending registration *before* it is deleted: it may already carry a
+    # referral captured on the register form, and that attribution would otherwise
+    # be destroyed along with the row and the referrer never paid.
+    pending = _pending_registration(client, email)
+    user = _create_user(client, email, claims, referral_code, pending)
     _link(client, user["id"], subject, email)
     _absorb_pending_registration(client, email)
+
+    # Google verified the address, so this account is real now — which is exactly
+    # the moment the password path reaches on email verification. Paying here is
+    # only safe because of that verification: there is no window in which a bonus
+    # could be farmed with addresses nobody controls.
+    referrals.settle(client, user)
+
     logger.info("Created a SilverGate account from a Google identity.")
     return user
 
@@ -343,7 +361,8 @@ def _touch_link(client, subject: str) -> None:
         logger.warning("Could not update the oauth_identities timestamp: %s", exc)
 
 
-def _create_user(client, email: str, claims: dict) -> dict:
+def _create_user(client, email: str, claims: dict, referral_code: str | None = None,
+                 pending: dict | None = None) -> dict:
     """
     Create an account for a Google-verified address.
 
@@ -377,7 +396,49 @@ def _create_user(client, email: str, claims: dict) -> dict:
         "email_verified_at": stamp,
         "created_at": stamp,
     }
-    return client.table("users").insert(row).execute().data[0]
+
+    # The link the user actually followed wins over a code typed into a register
+    # form they then abandoned in favour of Google: it is the more recent and more
+    # deliberate of the two. The pending row is only a fallback, and only when the
+    # link carried no usable code at all.
+    if not referrals.attribute(client, row, referral_code) and pending:
+        _inherit_referral(row, pending)
+
+    inserted = client.table("users").insert(row).execute().data[0]
+    # The insert response is authoritative, but merge the prepared row into it so
+    # that the attribution is present for `settle` even if the client returns a
+    # partial row.
+    return {**row, **inserted}
+
+
+def _pending_registration(client, email: str) -> dict | None:
+    """The half-finished email/password registration for `email`, if any."""
+    try:
+        found = (
+            client.table("tempusers")
+            .select("referred_by, referred_by_streamer")
+            .eq("email", email)
+            .limit(1)
+            .execute()
+        )
+    except Exception as exc:
+        logger.warning("Could not read a pending registration for a Google user: %s", exc)
+        return None
+    return found.data[0] if found.data else None
+
+
+def _inherit_referral(row: dict, pending: dict) -> None:
+    """
+    Carry a pending registration's attribution onto the account replacing it.
+
+    A streamer code is preferred over a user code when both somehow exist, because
+    the two never coexist on a row the register path built — `attribute` sets
+    exactly one.
+    """
+    for column in ("referred_by_streamer", "referred_by"):
+        if pending.get(column):
+            row[column] = pending[column]
+            return
 
 
 def _username_from(claims: dict, email: str) -> str:

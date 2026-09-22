@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { api, ApiError, googleSignInUrl } from "@/src/lib/api";
 import { isLocalPreview, previewHref } from "@/src/lib/preview";
 import { useT } from "@/src/lib/i18n";
+import { getReferralCode } from "@/src/lib/referral";
 import { SiteHeader } from "@/src/components/SiteHeader";
 import { SiteFooter } from "@/src/components/SiteFooter";
 import { GoogleMark, Icon } from "@/src/components/Icon";
@@ -22,6 +23,12 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false);
   const [checking, setChecking] = useState(!preview);
   const [verificationRequired, setVerificationRequired] = useState(false);
+  // A referral link that happens to land on /login must still credit the referrer
+  // for the account the user goes on to create, so the code is read once and handed
+  // to the Google button. Read in an effect rather than during render: the server
+  // has no storage, and reading it during render would make the two renders differ.
+  const [referralCode, setReferralCode] = useState("");
+  useEffect(() => { setReferralCode(getReferralCode()); }, []);
   const returnTo = useMemo(() => typeof window === "undefined" ? "/account" : safeReturnTo(new URLSearchParams(window.location.search).get("return_to") ?? new URLSearchParams(window.location.search).get("redirect")), []);
   // The API reports the outcome of a Google handshake as ?oauth=<code> when it
   // sends the browser back (see routes_google.py).
@@ -133,7 +140,7 @@ export default function LoginPage() {
               <button className="btn btn-primary btn-block" disabled={busy}>{busy ? t("login.submitting") : t("login.submit")} <span className="arrow" aria-hidden>→</span></button>
             </form>
             <div className="auth-divider">{t("login.divider")}</div>
-            <a className="btn btn-outline btn-block btn-google" href={preview ? href(returnTo) : googleSignInUrl(returnTo)}>
+            <a className="btn btn-outline btn-block btn-google" href={preview ? href(returnTo) : googleSignInUrl(returnTo, referralCode)}>
               <GoogleMark size={18} />
               <span>{t("login.googleCta")}</span>
             </a>
