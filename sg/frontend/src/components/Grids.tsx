@@ -7,7 +7,10 @@ import { useT } from "@/src/lib/i18n";
 import { Icon, type IconName } from "./Icon";
 
 const PLATFORMS = [
-  { key: "efootball", tone: "tone-blue", badge: "platform.live", href: "/login", img: "/cards/efootball.jpg", credit: "“Night begins to fall over Cardiff City Stadium” — joncandy, CC BY-SA 2.0" },
+  // efootball is a live product on its own host. It authenticates through SilverGate
+  // and shares the brand session cookie, so this is an ordinary link into it rather
+  // than a route on this site.
+  { key: "efootball", tone: "tone-blue", badge: "platform.live", href: "https://efootball.fromzerotohero.io", img: "/cards/efootball.jpg", credit: "“Night begins to fall over Cardiff City Stadium” — joncandy, CC BY-SA 2.0" },
   { key: "arena", tone: "tone-violet", badge: "platform.community", href: "/register", img: "/cards/arena.jpg", credit: "“DSC_0271” — ZoneESports, CC BY 2.0" },
   { key: "league", tone: "tone-slate", badge: "platform.soon", href: "/register", img: "/cards/league.jpg", credit: "“Gaming computer keyboard RGB” — karlhols, CC BY 2.0" }
 ];
@@ -26,7 +29,9 @@ export function PlatformCards({ showCredits = false }: { showCredits?: boolean }
     <>
       <div className="platforms-grid">
         {PLATFORMS.map((platform) => (
-          <a className={`platform-card ${platform.tone}`} href={preview ? previewHref(platform.href) : platform.href} key={platform.key}>
+          // An absolute href is a link off this site, so it must not have the local
+          // preview flag appended to it.
+          <a className={`platform-card ${platform.tone}`} href={platform.href.startsWith("http") ? platform.href : preview ? previewHref(platform.href) : platform.href} key={platform.key}>
             <img className="platform-card-img" src={platform.img} alt="" loading="lazy" />
             <span className="platform-card-overlay" aria-hidden />
             <span className="platform-badge">{t(platform.badge)}</span>

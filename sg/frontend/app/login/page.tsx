@@ -1,17 +1,13 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { api, ApiError, googleSignInUrl } from "@/src/lib/api";
+import { api, ApiError, googleSignInUrl, resolveReturnTarget } from "@/src/lib/api";
 import { isLocalPreview, previewHref } from "@/src/lib/preview";
 import { useT } from "@/src/lib/i18n";
 import { getReferralCode } from "@/src/lib/referral";
 import { SiteHeader } from "@/src/components/SiteHeader";
 import { SiteFooter } from "@/src/components/SiteFooter";
 import { GoogleMark, Icon } from "@/src/components/Icon";
-
-function safeReturnTo(value: string | null) {
-  return value && value.startsWith("/") && !value.startsWith("//") ? value : "/account";
-}
 
 export default function LoginPage() {
   const t = useT();
@@ -29,7 +25,13 @@ export default function LoginPage() {
   // has no storage, and reading it during render would make the two renders differ.
   const [referralCode, setReferralCode] = useState("");
   useEffect(() => { setReferralCode(getReferralCode()); }, []);
-  const returnTo = useMemo(() => typeof window === "undefined" ? "/account" : safeReturnTo(new URLSearchParams(window.location.search).get("return_to") ?? new URLSearchParams(window.location.search).get("redirect")), []);
+  // The destination as requested, forwarded verbatim to the register link and to
+  // Google; the API decides whether it is a legitimate place to send the user, so
+  // nothing the server would accept is dropped here first.
+  const returnTo = useMemo(() => typeof window === "undefined" ? "/account" : (new URLSearchParams(window.location.search).get("return_to") ?? new URLSearchParams(window.location.search).get("redirect") ?? "/account"), []);
+  // Where the browser actually goes once signed in — resolved on the server, so a
+  // registered platform origin works and an arbitrary URL does not.
+  const [destination, setDestination] = useState("/account");
   // The API reports the outcome of a Google handshake as ?oauth=<code> when it
   // sends the browser back (see routes_google.py).
   const oauthOutcome = useMemo(() => typeof window === "undefined" ? "" : (new URLSearchParams(window.location.search).get("oauth") ?? ""), []);
@@ -43,7 +45,19 @@ export default function LoginPage() {
         : t("login.googleFailed")
       );
     }
-    api.session().then(() => { window.location.href = returnTo; }).catch(() => setChecking(false));
+    let cancelled = false;
+    (async () => {
+      const target = await resolveReturnTarget(returnTo);
+      if (cancelled) return;
+      setDestination(target);
+      try {
+        await api.session();
+        window.location.href = target;
+      } catch {
+        setChecking(false);
+      }
+    })();
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preview, returnTo, oauthOutcome]);
 
@@ -55,7 +69,7 @@ export default function LoginPage() {
     setVerificationRequired(false);
     try {
       await api.login({ email: email.trim(), password });
-      window.location.href = returnTo;
+      window.location.href = destination;
     } catch (error) {
       const caught = error as ApiError;
       if (caught.payload?.requires_verification) {

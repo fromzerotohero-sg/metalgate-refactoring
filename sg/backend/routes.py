@@ -210,11 +210,12 @@ def login():
     email = (data.get("email") or "").strip().lower()
     password = data.get("password") or ""
     service = (data.get("service") or "").strip() or auth.service_from_request()
+    return_to = (data.get("return_to") or data.get("redirect") or "").strip() or None
 
     if not email or not password:
         return jsonify({"error": "Email and password are required"}), 400
 
-    return accounts.perform_login(email, password, service)
+    return accounts.perform_login(email, password, service, return_to=return_to)
 
 
 # ── Sessions ────────────────────────────────────────────────────────────────
@@ -230,6 +231,25 @@ def get_session():
     is what makes the login form unnecessary for a returning user.
     """
     return jsonify(accounts.public_user(g.user)), 200
+
+
+@bp.route("/redirect-target", methods=["GET"])
+@limiter.limit("60 per minute")
+def redirect_target():
+    """
+    Resolve a return target against the origin allowlist.
+
+    Public on purpose. A caller needs to know where it will be sent *before* any
+    credential exists — the login page asks this on load, both to decide whether to
+    bounce an already-signed-in user straight through and to know where to go after
+    a successful sign-in. A platform sets `?return_to=` to its own URL so a user who
+    signs in or registers here lands back on the platform.
+
+    It only ever echoes back a destination SilverGate would already redirect to
+    (a site-relative path, the frontend, or a registered platform origin), so it
+    cannot be used to reach anywhere new.
+    """
+    return jsonify({"url": auth.resolve_return_target(request.args.get("return_to"))}), 200
 
 
 @bp.route("/logout", methods=["POST"])

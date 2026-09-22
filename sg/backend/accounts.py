@@ -83,11 +83,14 @@ def record_service_login(user: dict, service: str | None) -> None:
         logger.warning("Failed to record login for user %s: %s", user["id"], exc)
 
 
-def perform_login(email: str, password: str, service: str | None):
+def perform_login(email: str, password: str, service: str | None, return_to: str | None = None):
     """
     Shared sign-in, used by `/api/login` and `/api/sso/login`.
 
-    On success the returned response already carries the session cookie.
+    On success the returned response already carries the session cookie. ``return_to``
+    is optional and only affects the ``redirect_to`` field of the response: it lets a
+    platform that posts credentials itself learn where the browser may go next,
+    without duplicating the origin allowlist on its side.
     """
     client = db.require_client()
     found = client.table("users").select("*").eq("email", email).execute()
@@ -125,6 +128,9 @@ def perform_login(email: str, password: str, service: str | None):
                     "message": "Login successful",
                     "token": token,
                     "user": public_user(user),
+                    # Where the caller should send the browser next. Additive, and
+                    # null when the value is missing or not an allowed origin.
+                    "redirect_to": auth.resolve_return_target(return_to),
                 }
             )
             auth.set_session_cookie(response, material["token"])

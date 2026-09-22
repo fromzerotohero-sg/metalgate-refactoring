@@ -55,27 +55,29 @@ STATE_TTL_MINUTES = 10
 DEFAULT_RETURN_PATH = "/login"
 
 
-def _safe_return_path(value) -> str:
+def _return_target(value) -> str:
     """
-    Only a relative path on this application may be used as the return target.
+    Resolve where the browser goes after the handshake.
 
-    An absolute URL here would make this endpoint an open redirect — and the
-    redirect happens *after* a session cookie is set, which is exactly the
-    handoff an attacker would want to abuse.
+    A site-relative path resolves against the frontend; an **absolute URL on an
+    origin SilverGate recognises** is returned unchanged, which is what lets a
+    platform start the Google flow and get the user back on its own domain. The
+    allowlist is the same one that governs every other post-authentication
+    redirect (see `auth.resolve_return_target`), so this stays safe to use here
+    even though it runs *after* a session cookie has been set.
+
+    Returns "" when the value is missing or unrecognised; the caller then falls
+    back to the sign-in page.
     """
     if not isinstance(value, str):
         return ""
-    candidate = value.strip()
-    if not candidate.startswith("/") or candidate.startswith("//"):
-        return ""
-    return candidate[:512]
+    return auth.resolve_return_target(value.strip()) or ""
 
 
-def _frontend_url(return_path: str, outcome: str) -> str:
-    base = current_app.config["APP_URL"]
-    path = _safe_return_path(return_path) or DEFAULT_RETURN_PATH
-    separator = "&" if "?" in path else "?"
-    return f"{base}{path}{separator}{urlencode({'oauth': outcome})}"
+def _destination_url(target: str, outcome: str) -> str:
+    base = target or f"{current_app.config['APP_URL']}{DEFAULT_RETURN_PATH}"
+    separator = "&" if "?" in base else "?"
+    return f"{base}{separator}{urlencode({'oauth': outcome})}"
 
 
 @google_bp.route("/auth/google/start", methods=["GET"])
@@ -85,15 +87,16 @@ def google_start():
     Send the browser to Google.
 
     `redirect` is where the user should land afterwards — a path on this
-    application, never an absolute URL. `ref` is the referral code the user
-    arrived through, if any; it is normalised here so that whatever reaches the
-    signed state is already known to be a code and nothing else.
+    application, or an absolute URL on a registered platform origin (so a platform
+    can start the handshake and get the user back). `ref` is the referral code the
+    user arrived through, if any; it is normalised here so that whatever reaches
+    the signed state is already known to be a code and nothing else.
     """
-    return_path = _safe_return_path(request.args.get("redirect"))
+    return_target = _return_target(request.args.get("redirect"))
 
     if not google_oauth.configured():
         logger.warning("Google sign-in was requested but is not configured.")
-        return redirect(_frontend_url(return_path, "unavailable"), code=302)
+        return redirect(_destination_url(return_target, "unavailable"), code=302)
 
     # The verifier travels inside the signed state token: there is no server-side
     # store to keep it in, and it is useless without the matching `state`.
@@ -103,7 +106,7 @@ def google_start():
             "type": STATE_TYPE,
             "nonce": secrets.token_urlsafe(16),
             "verifier": verifier,
-            "redirect": return_path,
+            "redirect": return_target,
             # Carried so that a signup completed through Google can still credit
             # whoever referred the user. Only the account-creation path reads it.
             "ref": referrals.normalize_code(request.args.get("ref")),
@@ -127,7 +130,7 @@ def google_callback():
     # rather than by calling us with a code.
     if request.args.get("error"):
         logger.info("Google sign-in did not complete: %s", str(request.args.get("error"))[:64])
-        return redirect(_frontend_url("", "cancelled"), code=302)
+        return redirect(_destination_url("", "cancelled"), code=302)
 
     state = request.args.get("state") or ""
     code = request.args.get("code") or ""
@@ -137,9 +140,9 @@ def google_callback():
         # No return path is trusted from an unverified state, so this lands on the
         # default destination.
         logger.warning("Google callback with a missing code or an unusable state.")
-        return redirect(_frontend_url("", "invalid"), code=302)
+        return redirect(_destination_url("", "invalid"), code=302)
 
-    return_path = _safe_return_path(payload.get("redirect"))
+    return_target = _return_target(payload.get("redirect"))
 
     try:
         tokens = google_oauth.exchange_code(code, payload.get("verifier") or "")
@@ -148,10 +151,10 @@ def google_callback():
         user = google_oauth.link_or_create_user(client, claims, payload.get("ref"))
     except google_oauth.GoogleAuthError as exc:
         logger.warning("Google sign-in rejected (%s).", exc.reason)
-        return redirect(_frontend_url(return_path, "failed"), code=302)
+        return redirect(_destination_url(return_target, "failed"), code=302)
     except Exception as exc:
         logger.error("Google sign-in failed: %s", exc)
-        return redirect(_frontend_url(return_path, "failed"), code=302)
+        return redirect(_destination_url(return_target, "failed"), code=302)
 
     # From here on this is an ordinary sign-in: one session, one cookie, one
     # audit event — identical to the password path.
@@ -166,7 +169,7 @@ def google_callback():
         user_agent=auth.user_agent(),
     )
 
-    response = redirect(_frontend_url(return_path, "success"), code=302)
+    response = redirect(_destination_url(return_target, "success"), code=302)
     auth.set_session_cookie(response, material["token"])
     logger.info("Google sign-in succeeded for user %s.", user["id"])
     return response

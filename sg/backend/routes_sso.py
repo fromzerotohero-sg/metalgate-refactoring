@@ -703,8 +703,9 @@ def sso_login():
     email = (data.get("email") or "").strip().lower()
     password = data.get("password") or ""
     service = (data.get("service") or "").strip() or auth.service_from_request()
+    return_to = (data.get("return_to") or data.get("redirect") or "").strip() or None
 
     if not email or not password:
         return jsonify({"error": "Email and password required"}), 400
 
-    return accounts.perform_login(email, password, service)
+    return accounts.perform_login(email, password, service, return_to=return_to)

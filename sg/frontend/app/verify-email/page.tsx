@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { api, ApiError } from "@/src/lib/api";
+import { api, ApiError, resolveReturnTarget } from "@/src/lib/api";
 import { isLocalPreview } from "@/src/lib/preview";
 import { useT } from "@/src/lib/i18n";
 import { SiteHeader } from "@/src/components/SiteHeader";
@@ -21,17 +21,17 @@ export default function VerifyEmailPage() {
     // Where to go once verified. The registration and login flows pass
     // `redirect` through to the backend, which puts it on the emailed link — so a
     // user who came from a platform is sent back INTO that platform rather than
-    // being dropped on the account page. Only a same-site path is honoured: an
-    // absolute URL here would turn the verification link into an open redirect.
+    // being dropped on the account page.
+    //
+    // Resolved on the server, not here: a registered platform origin is a valid
+    // destination and an arbitrary URL is not, and this value arrives on a link
+    // that was emailed to the user, so it must not be trusted locally.
     const requested = params.get("redirect");
-    const destination =
-      requested && requested.startsWith("/") && !requested.startsWith("//")
-        ? requested
-        : "/account";
 
     api.verifyEmail(token)
-      .then(() => {
+      .then(async () => {
         setMessage(t("verifyEmail.ok"));
+        const destination = await resolveReturnTarget(requested);
         // 900ms is enough to read the confirmation, short enough not to feel stuck.
         setTimeout(() => window.location.assign(destination), 900);
       })

@@ -122,6 +122,8 @@ const json = (body: unknown): RequestInit => ({ method: "POST", body: JSON.strin
 
 export const api = {
   session: () => request<SessionUser>("/session"),
+  /** Where a `?return_to=` may actually send the user. Server-validated. */
+  redirectTarget: (returnTo: string) => request<{ url: string | null }>(`/redirect-target?return_to=${encodeURIComponent(returnTo)}`),
   me: () => request<Profile>("/me"),
   statsUsers: () => request<{ count: number }>("/stats/users"),
   plans: () => request<{ plans: Plan[] }>("/plans"),
@@ -181,6 +183,30 @@ export function googleSignInUrl(redirect?: string, referral?: string): string {
   if (referral) parameters.set("ref", referral);
   const query = parameters.toString();
   return `${API_URL}/auth/google/start${query ? `?${query}` : ""}`;
+}
+
+/**
+ * Where to send the user after they authenticate.
+ *
+ * The set of valid destinations lives on the server — a site-relative path and a
+ * **registered platform origin** are legitimate, an arbitrary URL is not — so this
+ * asks rather than deciding locally. That is what lets a platform send a user here
+ * to sign in (or register) and get them back on its own domain, without the sign-in
+ * flow becoming an open redirect.
+ *
+ * A relative path is returned as-is (no round trip); anything else is offered to the
+ * server, and a rejected value falls back to the account page.
+ */
+export async function resolveReturnTarget(returnTo?: string | null): Promise<string> {
+  const fallback = "/account";
+  if (!returnTo) return fallback;
+  if (returnTo.startsWith("/") && !returnTo.startsWith("//")) return returnTo;
+  try {
+    const { url } = await api.redirectTarget(returnTo);
+    return url ?? fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 export { API_URL };

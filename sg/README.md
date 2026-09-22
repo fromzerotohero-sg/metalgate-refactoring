@@ -286,8 +286,8 @@ from it, so everything after the callback is identical to a password login.
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/api/auth/google/start?redirect=/path` | Redirects to Google. `redirect` is a **relative path on the frontend**, never an absolute URL |
-| GET | `/api/auth/google/callback` | Google calls this. Exchanges the code, verifies the ID token, links or creates the account, sets the session cookie, then redirects to `{SG_APP_URL}{redirect}?oauth=<outcome>` |
+| GET | `/api/auth/google/start?redirect=/path` | Redirects to Google. `redirect` is a relative path on the frontend **or an absolute URL on a registered platform origin**, so a platform can start the handshake and get the user back |
+| GET | `/api/auth/google/callback` | Google calls this. Exchanges the code, verifies the ID token, links or creates the account, sets the session cookie, then redirects to the resolved destination with `?oauth=<outcome>` |
 
 `oauth` is `success`, `cancelled`, `invalid`, `failed` or `unavailable`, and the
 login and registration pages translate it. Both endpoints are reached by a

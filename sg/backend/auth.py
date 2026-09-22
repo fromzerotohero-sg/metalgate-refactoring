@@ -500,6 +500,40 @@ def is_safe_redirect(target: str | None) -> bool:
     return f"{parsed.scheme}://{parsed.netloc}" in allowed_origins()
 
 
+def resolve_return_target(value: str | None) -> str | None:
+    """
+    Resolve a caller-supplied post-authentication destination to an absolute URL.
+
+    Accepts a site-relative path (resolved against ``APP_URL``) **or** an absolute
+    URL whose origin SilverGate recognises. The second case is what lets a platform
+    send a user here to sign in — or to register — and get them back on its own
+    domain afterwards; a platform's origin is in `allowed_origins()` once it is
+    registered in `SG_PLATFORMS`.
+
+    Returns ``None`` when the value is missing or is not an allowed destination.
+    This is the single place that decides where a post-authentication redirect may
+    land, so login, registration, email verification and the Google handshake cannot
+    disagree about it, and an unvetted value can never become an open redirect.
+    """
+    if not value:
+        return None
+
+    parsed = urlparse(value)
+    if not parsed.scheme and not parsed.netloc:
+        # Site-relative. `//evil.example` is protocol-relative, not relative.
+        if value.startswith("/") and not value.startswith("//"):
+            return f"{current_app.config['APP_URL']}{value}"
+        return None
+
+    if parsed.scheme not in ("http", "https"):
+        return None
+
+    if f"{parsed.scheme}://{parsed.netloc}" in allowed_origins():
+        return value
+
+    return None
+
+
 def redirect_preserving(response, location: str, *, code: int = 302):
     """
     Turn a response into a redirect while keeping the cookies it set.

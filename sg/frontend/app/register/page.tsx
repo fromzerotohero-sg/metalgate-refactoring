@@ -1,17 +1,13 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { api, ApiError, googleSignInUrl } from "@/src/lib/api";
+import { api, ApiError, googleSignInUrl, resolveReturnTarget } from "@/src/lib/api";
 import { isLocalPreview, previewHref } from "@/src/lib/preview";
 import { useT } from "@/src/lib/i18n";
 import { getReferralCode } from "@/src/lib/referral";
 import { SiteHeader } from "@/src/components/SiteHeader";
 import { SiteFooter } from "@/src/components/SiteFooter";
 import { GoogleMark, Icon } from "@/src/components/Icon";
-
-function safeReturnTo(value: string | null) {
-  return value && value.startsWith("/") && !value.startsWith("//") ? value : "/account";
-}
 
 export default function RegisterPage() {
   const t = useT();
@@ -26,7 +22,13 @@ export default function RegisterPage() {
   const [done, setDone] = useState(false);
   const [deliveryFailed, setDeliveryFailed] = useState(false);
   const [busy, setBusy] = useState(false);
-  const returnTo = useMemo(() => typeof window === "undefined" ? "/account" : safeReturnTo(new URLSearchParams(window.location.search).get("return_to") ?? new URLSearchParams(window.location.search).get("redirect")), []);
+  // The destination as requested, forwarded verbatim to the sign-in link and to
+  // Google; the API decides whether it is a legitimate place to send the user.
+  const returnTo = useMemo(() => typeof window === "undefined" ? "/account" : (new URLSearchParams(window.location.search).get("return_to") ?? new URLSearchParams(window.location.search).get("redirect") ?? "/account"), []);
+  // Where the browser goes once the emailed link is opened and verified — resolved
+  // on the server, so a registered platform origin works and an arbitrary URL does
+  // not. It rides on the verification link as `redirect`.
+  const [destination, setDestination] = useState("/account");
   // The API reports the outcome of a Google handshake as ?oauth=<code> when it
   // sends the browser back (see routes_google.py).
   const oauthOutcome = useMemo(() => typeof window === "undefined" ? "" : (new URLSearchParams(window.location.search).get("oauth") ?? ""), []);
@@ -41,7 +43,19 @@ export default function RegisterPage() {
         : t("login.googleFailed")
       );
     }
-    api.session().then(() => { window.location.href = returnTo; }).catch(() => {});
+    let cancelled = false;
+    (async () => {
+      const target = await resolveReturnTarget(returnTo);
+      if (cancelled) return;
+      setDestination(target);
+      try {
+        await api.session();
+        window.location.href = target;
+      } catch {
+        // Not signed in — stay on the form.
+      }
+    })();
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [oauthOutcome]);
 
@@ -64,7 +78,7 @@ export default function RegisterPage() {
         email: email.trim(), password,
         username: username.trim() || undefined,
         referral_code: referralCode.trim() || undefined,
-        redirect: `${window.location.origin}/verify-email`
+        redirect: destination
       });
       setDeliveryFailed(response.verification_email_sent === false);
       setDone(true);
@@ -79,7 +93,7 @@ export default function RegisterPage() {
   async function resendVerification() {
     setBusy(true);
     try {
-      await api.sendVerification({ email: email.trim(), redirect: `${window.location.origin}/verify-email` });
+      await api.sendVerification({ email: email.trim(), redirect: destination });
       setDeliveryFailed(false);
       setMessage(t("register.resent"));
     } catch (error) {
