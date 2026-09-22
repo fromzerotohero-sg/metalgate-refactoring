@@ -507,8 +507,8 @@ projects, every environment variable, the Stripe webhook, the smoke test and the
 security checklist.
 
 The short version: project root is this directory (set Vercel's **Root Directory**
-to `sg`), and `vercel.json` routes every path to `api/index.py`. The frontend is a
-separate project with Root Directory `sg/frontend`.
+to `sg`), and `vercel.json` rewrites every path to the `api/index.py` function.
+The frontend is a separate project with Root Directory `sg/frontend`.
 
 Set in the API project:
 
@@ -581,5 +581,5 @@ Set in the API project:
   branch, the admin API, logout and account deletion). Run it with
   `.simvenv/bin/python sim/harness.py`. It proves the application's own behaviour; it
   is **not** a substitute for a smoke test against the real Supabase project and a real
-  Stripe test webhook, which is still outstanding, and neither migration has been
-  applied to production.
+  Stripe test webhook, which is still outstanding. All three migrations are applied to
+  production as of 2026-09-22.
