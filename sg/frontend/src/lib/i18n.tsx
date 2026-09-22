@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 export const LOCALES = ["it", "en", "es"] as const;
 export type Locale = (typeof LOCALES)[number];
@@ -997,18 +997,35 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     document.documentElement.lang = locale;
   }, [locale]);
-  const setLocale = (next: Locale) => {
+  const setLocale = useCallback((next: Locale) => {
     setLocaleState(next);
     window.localStorage.setItem("language", next);
-  };
-  return <I18nContext.Provider value={{ locale, setLocale }}>{children}</I18nContext.Provider>;
+  }, []);
+  // Memoised so that changing the *language* is what re-renders consumers, rather
+  // than every render of this provider handing them a new context value.
+  const value = useMemo(() => ({ locale, setLocale }), [locale, setLocale]);
+  return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }
 
 export function useLocale() {
   return useContext(I18nContext);
 }
 
+/**
+ * The translation function.
+ *
+ * Memoised on `locale` — and that is load-bearing, not an optimisation. Callers
+ * legitimately put `t` in dependency arrays (a `load` callback that reports a
+ * translated error is the obvious case). Returning a fresh closure on every render
+ * makes every such array differ on every render, which silently turns a
+ * "fetch once" effect into an endless request loop: fetch → setState → re-render →
+ * new `t` → new callback → fetch again. That is exactly what made the account
+ * section pages hammer the API and flash their Save button.
+ */
 export function useT() {
   const { locale } = useLocale();
-  return (key: string) => DICTS[locale][key] ?? DICTS.it[key] ?? key;
+  return useCallback(
+    (key: string) => DICTS[locale][key] ?? DICTS.it[key] ?? key,
+    [locale],
+  );
 }

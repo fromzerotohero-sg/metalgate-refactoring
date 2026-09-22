@@ -58,6 +58,11 @@ export default function AccountSectionPage() {
     } finally {
       setBusy(false);
     }
+    // Every dependency here must be a stable primitive or a memoised value. One
+    // unstable entry (a closure rebuilt each render, an object literal) changes
+    // `load`'s identity every render, and the effect below then re-fetches forever:
+    // the page polls the API and the Save button flickers between "save" and
+    // "saving" with nothing to save. `t` is memoised on the locale for this reason.
   }, [preview, section, t]);
 
   useEffect(() => { void load(); }, [load]);
