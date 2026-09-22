@@ -1,20 +1,68 @@
 "use client";
+
 import { FormEvent, useState } from "react";
 import { api, ApiError } from "@/src/lib/api";
+import { isLocalPreview, previewHref } from "@/src/lib/preview";
+import { useT } from "@/src/lib/i18n";
+import { SiteHeader } from "@/src/components/SiteHeader";
+import { SiteFooter } from "@/src/components/SiteFooter";
+import { Icon } from "@/src/components/Icon";
 
 export default function ForgotPasswordPage() {
-  const initialEmail = typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("email") ?? "";
-  const [email, setEmail] = useState(initialEmail);
+  const t = useT();
+  const preview = isLocalPreview();
+  const [email, setEmail] = useState(() => typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("email") ?? "");
   const [message, setMessage] = useState("");
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
 
   async function submit(event: FormEvent) {
-    event.preventDefault(); setBusy(true); setMessage("");
-    try { await api.forgotPassword(email.trim()); setSent(true); setMessage("Se l’account esiste, abbiamo inviato un codice di verifica a questo indirizzo. · If an account exists, we sent a verification code. · Si existe una cuenta, hemos enviado un código de verificación."); }
-    catch (error) { setMessage((error as ApiError).message); }
-    finally { setBusy(false); }
+    event.preventDefault();
+    setBusy(true);
+    setMessage("");
+    if (preview) { setSent(true); setMessage(t("forgot.sent")); setBusy(false); return; }
+    try {
+      await api.forgotPassword(email.trim());
+      setSent(true);
+      setMessage(t("forgot.sent"));
+    } catch (error) {
+      setMessage((error as ApiError).message);
+    } finally {
+      setBusy(false);
+    }
   }
 
-  return <main className="form-page auth-page"><a className="brand" href="/"><img src="/logo.webp" alt="From Zero To Hero" /><span>From Zero To Hero</span></a><section className="form-card auth-card compact-auth"><div className="auth-card-heading"><p className="eyebrow">RECUPERO ACCESSO · ACCOUNT RECOVERY · RECUPERAR ACCESO</p><h1>Rientra nel tuo percorso.</h1><p>Ti invieremo un codice a uso singolo. Per sicurezza, il messaggio è uguale anche se l’email non è registrata.<br /><span className="muted-inline">We’ll send a one-time code. The message is the same for unregistered emails. · Enviaremos un código de un solo uso. El mensaje es igual para emails no registrados.</span></p></div>{!sent ? <form onSubmit={submit}><label>Email<input type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} /></label>{message && <p className="form-error" role="alert">{message}</p>}<button className="button primary" disabled={busy}>{busy ? "Invio… · Sending… · Enviando…" : "Invia codice · Send code · Enviar código"}<span aria-hidden>→</span></button></form> : <div className="mail-note"><strong>Controlla la posta · Check your inbox · Revisa tu correo</strong><span>{message}</span></div>}<div className="auth-actions">{sent && <a className="button primary" href={`/verify-code?email=${encodeURIComponent(email.trim())}`}>Inserisci il codice · Enter code · Introducir código <span aria-hidden>→</span></a>}<a className="form-secondary-link" href="/login">Torna al login · Back to sign in · Volver al acceso</a></div></section></main>;
+  return (
+    <main className="auth-page">
+      <SiteHeader />
+      <div className="auth-hero">
+        <div className="auth-layout compact">
+          <section className="auth-card">
+            <p className="eyebrow dark">{t("forgot.eyebrow")}</p>
+            <h1>{t("forgot.title")}</h1>
+            <p className="auth-card-lead">{t("forgot.lead")}</p>
+            {!sent ? (
+              <form onSubmit={submit}>
+                <div className="field">
+                  <div className="field-input">
+                    <span className="field-icon" aria-hidden><Icon name="mail" size={16} /></span>
+                    <input type="email" autoComplete="email" required placeholder={t("login.emailPh")} value={email} onChange={(event) => setEmail(event.target.value)} />
+                  </div>
+                </div>
+                {message && <p className="form-error" role="alert">{message}</p>}
+                <button className="btn btn-primary btn-block" disabled={busy}>{busy ? t("forgot.sending") : t("forgot.submit")} <span className="arrow" aria-hidden>→</span></button>
+              </form>
+            ) : (
+              <>
+                <div className="mail-note"><strong>{t("forgot.checkInbox")}</strong><span>{message}</span></div>
+                <a className="btn btn-primary btn-block" href={previewHref(`/verify-code?email=${encodeURIComponent(email.trim())}`)}>{t("forgot.enterCode")} <span className="arrow" aria-hidden>→</span></a>
+              </>
+            )}
+            <p className="auth-switch"><a href={preview ? previewHref("/login") : "/login"}>{t("forgot.backLogin")}</a></p>
+          </section>
+        </div>
+      </div>
+      <SiteFooter />
+    </main>
+  );
 }

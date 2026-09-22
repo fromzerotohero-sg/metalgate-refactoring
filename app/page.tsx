@@ -1,29 +1,98 @@
-import Image from "next/image";
+"use client";
 
-const platforms = [
-  { name: "eFootball", kicker: "LIVE NOW · DISPONIBILE · DISPONIBLE", text: "Carte, rosa, build e match: decisioni più lucide prima di ogni partita. · Cards, squad, builds and matches. · Cartas, plantilla, builds y partidos.", tone: "cyan", mark: "01", action: "Entra · Enter · Entrar" },
-  { name: "Arena Tornei", kicker: "COMMUNITY · COMUNIDAD", text: "Sfide, tornei e momenti competitivi in un unico spazio. · Challenges and tournaments in one place. · Retos y torneos en un solo espacio.", tone: "violet", mark: "02", action: "Scopri · Explore · Descubrir" },
-  { name: "League of Legends", kicker: "COMING SOON · IN ARRIVO · PRÓXIMAMENTE", text: "Un nuovo universo in arrivo, con lo stesso standard di controllo. · A new universe is coming. · Un nuevo universo está por llegar.", tone: "gold", mark: "03", action: "Aggiornamenti · Updates · Novedades" }
-];
-
-const signals = [
-  ["01", "Carte · Cards · Cartas", "spendi solo quando serve · spend only when it matters · gasta solo cuando importa"],
-  ["02", "Build · Builds", "costruite sul tuo stile · built for your style · hechas para tu estilo"],
-  ["03", "Rosa · Squad · Plantilla", "ruoli e sinergie leggibili · clear roles and synergy · roles y sinergias claras"],
-  ["04", "Match · Matches · Partidos", "capisci dove perdi campo · see where you lose ground · entiende dónde pierdes terreno"],
-  ["05", "Coach · Coach · Coach", "azioni pratiche, zero rumore · practical actions, no noise · acciones prácticas, sin ruido"]
-];
+import { isLocalPreview, previewHref } from "@/src/lib/preview";
+import { useT } from "@/src/lib/i18n";
+import { SiteHeader } from "@/src/components/SiteHeader";
+import { SiteFooter } from "@/src/components/SiteFooter";
+import { PlatformCards, PlansGrid } from "@/src/components/Grids";
+import { Icon } from "@/src/components/Icon";
 
 export default function Home() {
-  return <main className="premium-home">
-    <header className="premium-header"><a className="premium-brand" href="#top" aria-label="From Zero To Hero home"><Image src="/logo.webp" alt="From Zero To Hero" width={48} height={48} /><span>FROM ZERO<br /><b>TO HERO</b></span></a><nav className="premium-nav" aria-label="Navigazione principale"><a href="#platforms">Piattaforme</a><a href="#method">Metodo</a><a href="#plans">Piani</a><a href="#community">Community</a></nav><div className="premium-actions"><a className="premium-login" href="/login">Accedi</a><a className="button primary" href="/register">Inizia ora <span aria-hidden>→</span></a></div></header>
-    <section className="premium-hero" id="top"><div className="premium-hero-copy"><p className="eyebrow">FROM ZERO TO HERO · PERFORMANCE HUB</p><h1>Gioca con un piano.<br /><em>Migliora con metodo.</em></h1><p className="premium-lead">Il tuo spazio per capire cosa cambiare, scegliere meglio e portare ogni partita più vicino al tuo livello.</p><div className="premium-hero-actions"><a className="button primary" href="/register">Inizia il tuo percorso <span aria-hidden>→</span></a><a className="premium-text-link" href="#method">Scopri il metodo <span aria-hidden>↓</span></a></div><div className="premium-proof"><span><b>01</b> Un solo accesso</span><i /><span><b>02</b> Il tuo gioco</span><i /><span><b>03</b> Il prossimo passo</span></div></div><div className="hero-art" aria-label="Tre mondi competitivi, un unico ecosistema"><Image src="/hero-worlds.png" alt="Tre mondi competitivi: football, arena e fantasy" fill priority sizes="(max-width: 850px) 100vw, 58vw" /><div className="hero-art-shade" /><div className="hero-art-label"><span>LIVE EXPERIENCE</span><strong>Un ecosistema.<br />Più modi per dominare.</strong></div><div className="hero-art-orbit orbit-one" /><div className="hero-art-orbit orbit-two" /></div></section>
-    <section className="premium-strip" aria-label="Valore della piattaforma"><span>LESS NOISE</span><i /><span>BETTER DECISIONS</span><i /><span>HIGHER STANDARDS</span></section>
-    <section className="premium-section" id="platforms"><div className="premium-section-head"><div><p className="eyebrow">IL TUO ECOSISTEMA</p><h2>Scegli dove iniziare.</h2></div><p>Ogni piattaforma ha il suo ritmo. L’esperienza, il controllo e la chiarezza restano gli stessi.</p></div><div className="premium-platform-grid">{platforms.map((platform) => <article className={`premium-platform-card ${platform.tone}`} key={platform.name}><div className="platform-card-top"><span className="platform-number">{platform.mark}</span><span className="platform-kicker">{platform.kicker}</span></div><div className="platform-card-line" /><h3>{platform.name}</h3><p>{platform.text}</p><a className="premium-card-link" href={platform.name === "eFootball" ? "/login" : "/register"}>{platform.action}<span aria-hidden>↗</span></a><div className="platform-glow" aria-hidden /></article>)}</div></section>
-    <section className="premium-method" id="method"><div className="method-intro"><p className="eyebrow">IL METODO</p><h2>Non ti riempiamo di dati.<br /><em>Ti diamo direzione.</em></h2><p>Dal primo accesso devi sapere dove guardare e cosa fare dopo. Ogni area è progettata per trasformare il rumore in una scelta concreta.</p><a className="premium-text-link" href="/register">Vedi come funziona <span aria-hidden>→</span></a></div><div className="signal-grid">{signals.map(([number, title, text]) => <div className="signal-card" key={number}><span>{number}</span><strong>{title}</strong><p>{text}</p></div>)}</div></section>
-    <section className="premium-community" id="community"><div className="community-copy"><p className="eyebrow">LIVE COMMUNITY · COMUNIDAD EN VIVO</p><h2>Il gioco cambia.<br /><em>Il tuo standard resta.</em></h2><p>Player, creator e competizione nello stesso ecosistema.<br /><span className="muted-inline">Players, creators and competition in one ecosystem. · Jugadores, creadores y competición en un solo ecosistema.</span></p><a className="premium-text-link" href="/register">Entra nella community · Join the community · Únete a la comunidad <span aria-hidden>→</span></a></div><div className="community-visual"><img src="/community-arena.png" alt="Arena competitiva originale con player e community" /><div className="community-image-shade" /><div className="community-stat stat-one"><span>LIVE</span><strong>COMMUNITY</strong></div><div className="community-stat stat-two"><span>PLAYERS · CREATORS</span><strong>ONE STANDARD</strong></div></div></section>
-    <section className="premium-plans" id="plans"><div><p className="eyebrow">PIANI SEMPLICI</p><h2>Più valore al tuo gioco.</h2><p>Scegli il livello che ti serve oggi. Puoi cambiare quando vuoi.</p></div><div className="plan-teaser"><span>ACCOUNT · CONTROLLO · PROGRESSO</span><strong>Un solo spazio per tutto il tuo percorso.</strong><a className="button primary" href="/pricing">Scopri i piani <span aria-hidden>→</span></a></div></section>
-    <section className="premium-final"><p className="eyebrow">INIZIA DAL TUO CLUB</p><h2>Non copiare.<br /><em>Costruisci il tuo vantaggio.</em></h2><p>Il prossimo livello non è più lontano. È solo più chiaro.</p><a className="button primary" href="/register">Accedi alla piattaforma <span aria-hidden>→</span></a></section>
-    <footer className="premium-footer"><a className="premium-brand" href="#top"><Image src="/logo.webp" alt="From Zero To Hero" width={40} height={40} /><span>FROM ZERO<br /><b>TO HERO</b></span></a><nav><a href="/legal/terms">Termini</a><a href="/legal/privacy">Privacy</a><a href="/preview">Local preview</a></nav><span>Una piattaforma indipendente ideata e gestita da Spazio Game Srls.</span></footer>
-  </main>;
+  const t = useT();
+  const preview = isLocalPreview();
+  const href = (path: string) => (preview ? previewHref(path) : path);
+
+  return (
+    <main>
+      <SiteHeader />
+      <section className="hero-dark">
+        <div className="hero-inner">
+          <div>
+            <p className="eyebrow">{t("home.eyebrow")}</p>
+            <h1 className="hero-title">{t("home.heroTitle1")}<br /><em>{t("home.heroTitle2")}</em></h1>
+            <p className="hero-lead">{t("home.heroLead")}</p>
+            <div className="hero-actions">
+              <a className="btn btn-primary" href={href("/register")}>{t("home.ctaPrimary")} <span className="arrow" aria-hidden>→</span></a>
+              <a className="btn btn-ghost" href={href("/platforms")}>{t("home.ctaSecondary")}</a>
+            </div>
+          </div>
+          <div className="hero-art">
+            <img src="/hero-worlds.png" alt="From Zero To Hero" />
+            <span className="hero-art-caption">FROM ZERO TO HERO</span>
+          </div>
+        </div>
+      </section>
+
+      <div className="trust-strip">
+        <div className="trust-item"><span className="trust-icon"><Icon name="zap" size={19} /></span><div><strong>{t("home.trust1t")}</strong><small>{t("home.trust1d")}</small></div></div>
+        <div className="trust-item"><span className="trust-icon"><Icon name="user" size={19} /></span><div><strong>{t("home.trust2t")}</strong><small>{t("home.trust2d")}</small></div></div>
+        <div className="trust-item"><span className="trust-icon"><Icon name="infinity" size={19} /></span><div><strong>{t("home.trust3t")}</strong><small>{t("home.trust3d")}</small></div></div>
+      </div>
+
+      <section className="section-light" id="platforms">
+        <div className="section-inner">
+          <div className="section-head">
+            <div>
+              <h2>{t("home.platformsTitle")}</h2>
+              <p>{t("home.platformsLead")}</p>
+            </div>
+            <a className="section-link" href={href("/platforms")}>{t("home.platformsLink")} →</a>
+          </div>
+          <PlatformCards showCredits />
+        </div>
+      </section>
+
+      <section className="section-light" id="how" style={{ paddingTop: 0 }}>
+        <div className="section-inner">
+          <div className="section-head">
+            <div>
+              <h2>{t("home.howTitle")}</h2>
+              <p>{t("home.howLead")}</p>
+            </div>
+          </div>
+          <div className="how-steps">
+            {[1, 2, 3].map((step) => (
+              <div className="how-step" key={step}>
+                <span className="how-step-num">{step}</span>
+                <div><strong>{t(`home.step${step}t`)}</strong><p>{t(`home.step${step}d`)}</p></div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="section-light" id="plans" style={{ paddingTop: 0 }}>
+        <div className="section-inner">
+          <div className="section-head">
+            <div>
+              <h2>{t("home.plansTitle")}</h2>
+              <p>{t("home.plansLead")}</p>
+            </div>
+            <a className="section-link" href={href("/pricing")}>{t("home.plansCta")} →</a>
+          </div>
+          <PlansGrid onChoose={() => { window.location.href = href("/pricing"); }} />
+          <p className="page-note">{t("pricing.note")}</p>
+        </div>
+      </section>
+
+      <section className="hero-dark">
+        <div className="final-cta">
+          <h2>{t("home.finalTitle1")} <em>{t("home.finalTitle2")}</em></h2>
+          <p>{t("home.finalLead")}</p>
+          <a className="btn btn-primary" href={href("/register")}>{t("home.finalCta")} <span className="arrow" aria-hidden>→</span></a>
+        </div>
+      </section>
+      <SiteFooter />
+    </main>
+  );
 }

@@ -1,2 +1,15 @@
-import Link from "next/link";
-export default async function LegalPage({params}:{params:Promise<{page:string}>}){const {page}=await params;const title=page==="privacy"?"Privacy":"Termini";return <main className="simple-page"><a className="brand" href="/"><img src="/logo.webp" alt="From Zero To Hero"/><span>From Zero To Hero</span></a><section className="simple-content"><p className="eyebrow">DOCUMENTI</p><h1>{title}</h1><p>Questa pagina è predisposta per il documento ufficiale del servizio. Il testo definitivo verrà pubblicato senza modificare i contratti API.</p><Link href="/">← Torna alla home</Link></section></main>}
+import { SiteHeader } from "@/src/components/SiteHeader";
+import { SiteFooter } from "@/src/components/SiteFooter";
+import { LegalDoc } from "@/src/lib/legal";
+
+export default async function LegalPage({ params }: { params: Promise<{ page: string }> }) {
+  const { page } = await params;
+  const normalized = page === "privacy" ? "privacy" : "terms";
+  return (
+    <main className="site-page light-page">
+      <SiteHeader />
+      <LegalDoc page={normalized} />
+      <SiteFooter />
+    </main>
+  );
+}

@@ -1,9 +1,42 @@
 "use client";
-import { useEffect, useState } from "react";
-import { api, ApiError } from "@/src/lib/api";
-import { isLocalPreview } from "@/src/lib/preview";
 
-type Plan={id:string;name:string;price_display?:string;interval?:string;credits_per_period?:number};
-const previewPlans: Plan[] = [{id:"lite",name:"Lite",price_display:"€ 7,99",interval:"mese · month · mes",credits_per_period:150},{id:"pro",name:"Pro",price_display:"€ 14,99",interval:"mese · month · mes",credits_per_period:300},{id:"ultra",name:"Ultra",price_display:"€ 29,99",interval:"mese · month · mes",credits_per_period:750}];
-export default function PricingPage(){const [plans,setPlans]=useState<Plan[]>([]);const [error,setError]=useState("");useEffect(()=>{if(isLocalPreview()){setPlans(previewPlans);return;}api.plans().then((data:any)=>setPlans(data.plans??[])).catch((e:ApiError)=>setError(`${e.message} · Request failed. · La solicitud ha fallado.`));},[]);return <main className="simple-page"><a className="brand" href="/"><img src="/logo.webp" alt="From Zero To Hero"/><span>From Zero To Hero</span></a><section className="simple-content"><p className="eyebrow">PREZZI · PRICING · PRECIOS</p><h1>Scegli il piano giusto. <span className="muted-inline">Choose your plan. · Elige tu plan.</span></h1><p>I piani arrivano dall’API ufficiale. I crediti non utilizzati non si accumulano al mese successivo.<br/><span className="muted-inline">Plans come from the official API. Unused credits do not roll over. · Los planes llegan desde la API oficial. Los créditos no usados no se acumulan.</span></p>{error&&<p className="form-error">{error}</p>}<div className="plans">{plans.map((plan)=><article className="plan-card" key={plan.id}><h2>{plan.name}</h2><strong>{plan.price_display??"—"}<small> / {plan.interval??"mese · month · mes"}</small></strong><p>{plan.credits_per_period??"—"} crediti al mese<br/><span className="muted-inline">credits per month · créditos al mes</span></p><button className="button primary" onClick={()=>{if(isLocalPreview()){setError("Modalità demo: il checkout Stripe è disattivato. · Demo mode: Stripe checkout is disabled. · Modo demo: el checkout de Stripe está desactivado.");return;}void api.subscribe(plan.id).then(r=>window.location.href=r.url).catch(e=>setError(`${(e as ApiError).message} · Checkout failed. · El pago ha fallado.`));}}>Scegli piano · Choose plan · Elegir plan</button></article>)}</div><a href="/">← Torna alla home · Back home · Volver al inicio</a></section></main>;
+import { useState } from "react";
+import { api, ApiError, type Plan } from "@/src/lib/api";
+import { isLocalPreview } from "@/src/lib/preview";
+import { useT } from "@/src/lib/i18n";
+import { SiteHeader } from "@/src/components/SiteHeader";
+import { SiteFooter } from "@/src/components/SiteFooter";
+import { PlansGrid } from "@/src/components/Grids";
+
+export default function PricingPage() {
+  const t = useT();
+  const [message, setMessage] = useState("");
+
+  function choose(plan: Plan) {
+    if (isLocalPreview()) { setMessage(t("pricing.demoCheckout")); return; }
+    setMessage("");
+    api.subscribe(plan.id)
+      .then((result) => { window.location.href = result.url; })
+      .catch((error: ApiError) => {
+        if (error.status === 401) { window.location.href = "/login?return_to=/pricing"; return; }
+        setMessage(error.message || t("common.error"));
+      });
+  }
+
+  return (
+    <main className="light-page">
+      <SiteHeader />
+      <section className="page-hero">
+        <p className="eyebrow">{t("pricing.eyebrow")}</p>
+        <h1>{t("pricing.title")}</h1>
+        <p>{t("pricing.lead")}</p>
+      </section>
+      <div className="page-body">
+        {message && <p className="form-error" role="alert" style={{ marginBottom: 22 }}>{message}</p>}
+        <PlansGrid onChoose={choose} />
+        <p className="page-note">{t("pricing.note")}</p>
+      </div>
+      <SiteFooter />
+    </main>
+  );
 }

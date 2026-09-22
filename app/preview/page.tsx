@@ -1,10 +1,49 @@
-import Link from "next/link";
+"use client";
 
-const publicPages = [
-  ["Home", "/"], ["Piattaforme", "/platforms"], ["Prezzi", "/pricing"], ["Login", "/login"], ["Registrazione", "/register"], ["Recupero password", "/forgot-password"], ["Codice reset", "/verify-code"], ["Nuova password", "/reset-password"], ["Verifica email", "/verify-email"]
+import { useT } from "@/src/lib/i18n";
+import { SiteHeader } from "@/src/components/SiteHeader";
+import { SiteFooter } from "@/src/components/SiteFooter";
+
+const publicPages: [string, string][] = [
+  ["page.home", "/"], ["page.platforms", "/platforms"], ["page.pricing", "/pricing"],
+  ["page.login", "/login"], ["page.register", "/register"], ["page.forgot", "/forgot-password"],
+  ["page.code", "/verify-code"], ["page.reset", "/reset-password"], ["page.verifyEmail", "/verify-email"],
+  ["page.terms", "/legal/terms"], ["page.privacy", "/legal/privacy"]
 ];
-const accountPages = [["Panoramica", "/account"], ["Profilo", "/account/profile"], ["Abbonamento", "/account/subscription"], ["Sicurezza", "/account/security"], ["Attività", "/account/transactions"]];
+const accountPages: [string, string][] = [
+  ["page.overview", "/account"], ["page.profile", "/account/profile"],
+  ["page.subscription", "/account/subscription"], ["page.security", "/account/security"], ["page.activity", "/account/transactions"]
+];
 
 export default function PreviewIndex() {
-  return <main className="simple-page preview-index"><a className="brand" href="/"><img src="/logo.webp" alt="From Zero To Hero" /><span>From Zero To Hero</span></a><section className="simple-content"><p className="eyebrow">LOCAL PREVIEW</p><h1>Esplora tutto il prodotto.</h1><p>Questa area serve solo per vedere il percorso completo senza autenticazione. Funziona su localhost e non modifica la sicurezza della produzione.</p><div className="preview-groups"><div><p className="eyebrow">PAGINE PUBBLICHE</p><nav className="preview-links">{publicPages.map(([label, href]) => <Link className="preview-link" href={href} key={href}>{label}<span aria-hidden>→</span></Link>)}</nav></div><div><p className="eyebrow">AREA ACCOUNT DEMO</p><nav className="preview-links">{accountPages.map(([label, href]) => <Link className="preview-link" href={`${href}${href.includes("?") ? "&" : "?"}preview=1`} key={href}>{label}<span aria-hidden>↗</span></Link>)}</nav></div></div><p className="field-hint">Avvia con <code>npm run dev</code> e apri <code>/preview</code>.</p></section></main>;
+  const t = useT();
+  return (
+    <main className="light-page">
+      <SiteHeader />
+      <section className="page-hero">
+        <p className="eyebrow">{t("preview.eyebrow")}</p>
+        <h1>{t("preview.title")}</h1>
+        <p>{t("preview.lead")}</p>
+      </section>
+      <div className="page-body">
+        <div className="preview-groups">
+          <div>
+            <p className="eyebrow dark">{t("preview.public")}</p>
+            <nav className="preview-links">
+              {publicPages.map(([label, href]) => <a className="preview-link" href={href} key={href}>{t(label)}<span aria-hidden>→</span></a>)}
+            </nav>
+          </div>
+          <div>
+            <p className="eyebrow dark">{t("preview.account")}</p>
+            <nav className="preview-links">
+              {accountPages.map(([label, href]) => <a className="preview-link" href={`${href}?preview=1`} key={href}>{t(label)}<span aria-hidden>↗</span></a>)}
+              <a className="preview-link" href="/account?preview=1&subscription=success">{t("page.overview")} — subscription=success<span aria-hidden>↗</span></a>
+            </nav>
+          </div>
+        </div>
+        <p className="preview-hint">{t("preview.hint")}</p>
+      </div>
+      <SiteFooter />
+    </main>
+  );
 }

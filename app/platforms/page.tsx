@@ -1,2 +1,24 @@
-import Link from "next/link";
-export default function PlatformsPage(){return <main className="simple-page"><a className="brand" href="/"><img src="/logo.webp" alt="From Zero To Hero"/><span>From Zero To Hero</span></a><section className="simple-content"><p className="eyebrow">PIATTAFORME · PLATFORMS · PLATAFORMAS</p><h1>Un ecosistema che cresce con te.</h1><p className="muted-inline">An ecosystem that grows with you. · Un ecosistema que crece contigo.</p><div className="platform-grid"><article className="platform-card blue"><h2>eFootball</h2><p>Disponibile ora. Carte, build, rosa e match.<br/><span className="muted-inline">Available now. Cards, builds, squad and matches. · Disponible ahora. Cartas, builds, plantilla y partidos.</span></p><Link className="button primary" href="/login">Entra · Enter · Entrar</Link></article><article className="platform-card violet"><h2>Arena Tornei</h2><p>Community, sfide e tornei in un unico spazio.<br/><span className="muted-inline">Community, challenges and tournaments in one place. · Comunidad, retos y torneos en un solo espacio.</span></p><span className="pill">Disponibile ora · Live now · Disponible ahora</span></article><article className="platform-card slate"><h2>League of Legends</h2><p>In arrivo. · Coming soon. · Próximamente.</p><span className="pill soon">Coming Soon · Próximamente</span></article></div></section></main>}
+"use client";
+
+import { useT } from "@/src/lib/i18n";
+import { SiteHeader } from "@/src/components/SiteHeader";
+import { SiteFooter } from "@/src/components/SiteFooter";
+import { PlatformCards } from "@/src/components/Grids";
+
+export default function PlatformsPage() {
+  const t = useT();
+  return (
+    <main className="light-page">
+      <SiteHeader />
+      <section className="page-hero">
+        <p className="eyebrow">{t("platforms.eyebrow")}</p>
+        <h1>{t("platforms.title")}</h1>
+        <p>{t("platforms.lead")}</p>
+      </section>
+      <div className="page-body">
+        <PlatformCards showCredits />
+      </div>
+      <SiteFooter />
+    </main>
+  );
+}

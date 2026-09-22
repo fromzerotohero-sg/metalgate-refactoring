@@ -1,57 +1,175 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, ApiError } from "@/src/lib/api";
-import { isLocalPreview, previewAccount, previewHref } from "@/src/lib/preview";
+import { api, ApiError, type AuthSession, type CreditsPayload, type SessionUser } from "@/src/lib/api";
+import { isLocalPreview, previewCredits, previewHref, previewSessions, previewUser } from "@/src/lib/preview";
+import { useT, useLocale } from "@/src/lib/i18n";
+import { SiteHeader } from "@/src/components/SiteHeader";
+import { SiteFooter } from "@/src/components/SiteFooter";
+import { PlatformCards } from "@/src/components/Grids";
+import { Icon } from "@/src/components/Icon";
 
+type AccountData = { session: SessionUser; credits: CreditsPayload; sessions: AuthSession[] };
 type LoadState = "loading" | "ready" | "error";
-type AccountData = { session: any; me: any; credits: any; transactions: any[]; sessions: any[] };
-const navigation = [
-  { href: "/account", label: "Panoramica · Overview · Resumen", icon: "⌂" },
-  { href: "/platforms", label: "Piattaforme · Platforms · Plataformas", icon: "◈" },
-  { href: "/account/profile", label: "Profilo · Profile · Perfil", icon: "◯" },
-  { href: "/account/subscription", label: "Abbonamento · Subscription · Suscripción", icon: "✦" },
-  { href: "/account/security", label: "Sicurezza · Security · Seguridad", icon: "◇" },
-  { href: "/account/transactions", label: "Attività · Activity · Actividad", icon: "↗" }
-];
 
-function initials(user: any) { return (user?.username || user?.email || "U").slice(0, 2).toUpperCase(); }
-function LoadingWorkspace() { return <div className="workspace-loading" aria-label="Caricamento · Loading · Cargando"><span /><span /><span /><div /></div>; }
-
-function FirstRunGuide({ onComplete }: { onComplete: () => void }) {
-  const preview = isLocalPreview();
-  const [step, setStep] = useState(0);
-  const steps = [
-    { eyebrow: "01 · IDENTITÀ / IDENTITY / IDENTIDAD", title: "Diamo un nome al tuo percorso.", body: "Completa il profilo per ritrovarti in ogni piattaforma. · Complete your profile to be recognised everywhere. · Completa tu perfil para reconocerte en cada plataforma.", action: "Apri il profilo · Open profile · Abrir perfil", href: "/account/profile" },
-    { eyebrow: "02 · IL TUO GIOCO / YOUR GAME / TU JUEGO", title: "Da dove vuoi iniziare?", body: "eFootball è disponibile ora; le prossime piattaforme si aggiungeranno al tuo account. · eFootball is live; more platforms will follow. · eFootball está disponible; llegarán más plataformas.", action: "Scopri eFootball · Explore eFootball · Descubre eFootball", href: "/platforms" },
-    { eyebrow: "03 · PRONTO / READY / LISTO", title: "Il tuo spazio è pronto.", body: "Piano, utilizzo e prossimo passo sono sempre sotto controllo. · Plan, usage and next step stay clear. · Tu plan, uso y próximo paso siempre están claros.", action: "Vai alla piattaforma · Open platform · Ir a la plataforma", href: "/platforms" }
-  ];
-  const current = steps[step];
-  return <section className="onboarding-card" aria-labelledby="onboarding-title"><div className="onboarding-orbit" aria-hidden><span>↗</span></div><div className="onboarding-content"><p className="eyebrow">{current.eyebrow}</p><h2 id="onboarding-title">{current.title}</h2><p>{current.body}</p><div className="onboarding-actions"><a className="button primary" href={preview ? previewHref(current.href) : current.href} onClick={() => { if (step === steps.length - 1) onComplete(); }}>{current.action} <span aria-hidden>→</span></a>{step < steps.length - 1 ? <button className="text-button" onClick={() => setStep((value) => value + 1)}>Continua · Continue · Continuar <span aria-hidden>→</span></button> : <button className="text-button" onClick={onComplete}>Nascondi · Hide · Ocultar</button>}</div><div className="onboarding-dots" aria-label={`Passo ${step + 1} di ${steps.length} · Step ${step + 1} of ${steps.length} · Paso ${step + 1} de ${steps.length}`}>{steps.map((_, index) => <button key={index} aria-label={`Vai al passo ${index + 1}`} className={index === step ? "active" : ""} onClick={() => setStep(index)} />)}</div></div></section>;
-}
-
-function Workspace({ data }: { data: AccountData }) {
-  const preview = isLocalPreview();
-  const [showGuide, setShowGuide] = useState(preview || !data.me?.username || !data.me?.tag);
-  const plan = data.credits?.plan;
-  const usage = data.credits?.usage;
-  const balance = data.credits?.credits;
-  const percent = typeof usage?.percent === "number" ? Math.min(100, Math.max(0, usage.percent)) : 0;
-  const allowance = usage?.credits_allowance ?? plan?.credits_per_period;
-  const displayName = data.session?.username || data.session?.email?.split("@")[0] || "giocatore";
-  const visibleTransactions = useMemo(() => data.transactions.slice(0, 4), [data.transactions]);
-  const status = usage?.overfilled ? "Stai usando crediti bonus · You’re using bonus credits · Estás usando créditos extra." : plan?.cancel_at_period_end ? `Attivo fino al ${new Date(plan.current_period_end).toLocaleDateString("it-IT")} · Active until ${new Date(plan.current_period_end).toLocaleDateString("en-GB")} · Activo hasta ${new Date(plan.current_period_end).toLocaleDateString("es-ES")}.` : plan?.active === false ? "Il tuo abbonamento è terminato · Your subscription has ended · Tu suscripción ha terminado." : "Il tuo periodo è in corso · Your billing period is active · Tu periodo está activo.";
-  return <div className="workspace"><aside className="workspace-sidebar"><a className="workspace-brand" href="/"><img src="/logo.webp" alt="From Zero To Hero" /><span>FROM ZERO<br /><b>TO HERO</b></span></a><div className="workspace-profile"><div className="avatar">{initials(data.session)}</div><div><strong>{displayName}</strong><small>{data.session?.email}</small></div></div><nav className="workspace-nav" aria-label="Area personale · Personal area · Área personal">{navigation.map((item) => <a className={item.href === "/account" ? "selected" : ""} href={preview ? previewHref(item.href) : item.href} key={item.href}><span>{item.icon}</span>{item.label}</a>)}</nav><div className="sidebar-footer"><a href="/legal/privacy">Privacy · Privacidad</a><a href="/legal/terms">Termini · Terms · Términos</a><button onClick={async () => { if (preview) { window.location.href = "/"; return; } await api.logout(); window.location.href = "/"; }}>Esci · Sign out · Salir</button></div></aside><main className="workspace-main"><header className="workspace-topbar"><div><p className="eyebrow">{preview ? "DEMO LOCALE · LOCAL DEMO · DEMO LOCAL" : "IL TUO SPAZIO · YOUR SPACE · TU ESPACIO"}</p><h1>Bentornato, {displayName}.</h1><span className="muted-inline">Welcome back · Bienvenido de nuevo</span></div><div className="topbar-actions"><button className="icon-button" aria-label="Notifiche · Notifications · Notificaciones">♧</button><a className="avatar small" href={preview ? previewHref("/account/profile") : "/account/profile"}>{initials(data.session)}</a></div></header><section className="workspace-intro"><div><p>Un punto di partenza chiaro per tutto quello che vuoi migliorare.<br /><span className="muted-inline">A clear starting point for every improvement. · Un punto de partida claro para mejorar.</span></p><a className="button primary" href={preview ? previewHref("/platforms") : "/platforms"}>Vai alle piattaforme · Open platforms · Ver plataformas <span aria-hidden>→</span></a></div><div className="intro-mark" aria-hidden><span>FZ</span><i /></div></section>{showGuide && <FirstRunGuide onComplete={() => setShowGuide(false)} />}<section className="workspace-grid"><article className="surface platform-focus"><div className="surface-heading"><div><p className="eyebrow">IN EVIDENZA · FEATURED · DESTACADO</p><h2>eFootball</h2></div><span className="status-chip live"><i /> Disponibile ora · Live now · Disponible ahora</span></div><p className="surface-copy">Carte, build, rosa e partite in un solo spazio. · Cards, builds, squad and matches in one place. · Cartas, builds, plantilla y partidos en un solo espacio.</p><div className="platform-focus-footer"><div className="focus-stats"><span><b>01</b> Carte · Cards</span><span><b>02</b> Build</span><span><b>03</b> Rosa · Squad</span></div><a className="button dark" href={preview ? previewHref("/platforms") : "/platforms"}>Apri piattaforma · Open platform · Abrir plataforma <span aria-hidden>↗</span></a></div></article><article className="surface usage-surface"><div className="surface-heading"><div><p className="eyebrow">IL TUO PIANO · YOUR PLAN · TU PLAN</p><h2>{plan?.name ?? "Free"}</h2></div><a className="quiet-link" href={preview ? previewHref("/account/subscription") : "/account/subscription"}>Gestisci · Manage · Gestionar →</a></div><div className="usage-ring" style={{ "--usage": `${percent * 3.6}deg` } as React.CSSProperties}><div><strong>{Math.round(percent)}%</strong><small>utilizzato · used · usado</small></div></div>{(balance?.total_remaining !== undefined || allowance !== undefined) && <div className="quota-detail"><strong>{balance?.total_remaining ?? "—"} crediti disponibili · credits remaining · créditos disponibles</strong><span>{usage?.credits_used ?? "—"} utilizzati su {allowance ?? "—"} · used of · usados de</span></div>}<p className="usage-note">{status}</p>{data.credits?.upgrade?.show && <a className="upgrade-link" href={data.credits.upgrade.url}>{data.credits.upgrade.cta_label} <span aria-hidden>→</span></a>}</article></section><section className="workspace-grid lower"><article className="surface activity-surface"><div className="surface-heading"><div><p className="eyebrow">ULTIME ATTIVITÀ · RECENT ACTIVITY · ACTIVIDAD RECIENTE</p><h2>Il tuo percorso · Your journey · Tu recorrido</h2></div><a className="quiet-link" href={preview ? previewHref("/account/transactions") : "/account/transactions"}>Vedi tutto · View all · Ver todo →</a></div>{visibleTransactions.length ? <div className="activity-list">{visibleTransactions.map((tx: any) => <div className="activity-row" key={tx.id}><div className="activity-icon">{tx.amount > 0 ? "+" : "↗"}</div><div><strong>{tx.description}</strong><small>{tx.timestamp ? new Date(tx.timestamp).toLocaleDateString("it-IT") : "Operazione recente · Recent activity · Actividad reciente"}</small></div><b className={tx.amount > 0 ? "positive" : ""}>{tx.amount > 0 ? "+" : ""}{tx.amount}</b></div>)}</div> : <div className="empty-state"><span>✦</span><p>Le tue attività compariranno qui. · Your activity will appear here. · Tu actividad aparecerá aquí.</p></div>}</article><article className="surface next-surface"><p className="eyebrow">PROSSIMO PASSO · NEXT STEP · SIGUIENTE PASO</p><h2>Rendi il tuo account tuo.</h2><p>Aggiungi username e tag per entrare nelle piattaforme. · Add a username and tag to enter platforms. · Añade usuario y tag para entrar en las plataformas.</p><a className="quiet-link" href={preview ? previewHref("/account/profile") : "/account/profile"}>Completa il profilo · Complete profile · Completar perfil <span aria-hidden>→</span></a></article></section><footer className="workspace-mobile-nav">{navigation.slice(0, 4).map(item => <a className={item.href === "/account" ? "selected" : ""} href={preview ? previewHref(item.href) : item.href} key={item.href}><span>{item.icon}</span>{item.label}</a>)}</footer></main></div>;
+function initials(user: SessionUser | undefined) {
+  return (user?.username || user?.email || "U").slice(0, 2).toUpperCase();
 }
 
 export default function AccountPage() {
-  const localPreview = isLocalPreview();
-  const [state, setState] = useState<LoadState>(localPreview ? "ready" : "loading");
-  const [data, setData] = useState<AccountData | null>(localPreview ? previewAccount as AccountData : null);
-  const [error, setError] = useState("");
-  const load = useCallback(async () => { setState("loading"); setError(""); try { const [session, me, credits, transactionsResponse, sessionsResponse] = await Promise.all([api.session(), api.me(), api.credits(), api.transactions(), api.authSessions()]); const transactions = transactionsResponse as any; const sessions = sessionsResponse as any; setData({ session, me, credits, transactions: transactions?.transactions ?? [], sessions: sessions?.sessions ?? [] }); setState("ready"); } catch (caught) { const e = caught as ApiError; if (e.status === 401) { window.location.href = "/login?return_to=/account"; return; } setError(e.message); setState("error"); } }, []);
-  useEffect(() => { if (localPreview) { setData(previewAccount as AccountData); setState("ready"); return; } void load(); }, [localPreview, load]);
-  if (state === "loading") return <main className="account-loading"><img src="/logo.webp" alt="From Zero To Hero" /><LoadingWorkspace /></main>;
-  if (state === "error" || !data) return <main className="account-error"><img src="/logo.webp" alt="From Zero To Hero" /><div className="error-panel"><p className="eyebrow">IL TUO SPAZIO · YOUR SPACE · TU ESPACIO</p><h1>Non riesco a caricare i dati.</h1><p>Impossibile caricare i dati. · We couldn’t load your data. · No hemos podido cargar tus datos.</p><p className="form-error">{error}</p><button className="button primary" onClick={() => void load()}>Riprova · Try again · Reintentar</button><a href="/">Torna alla home · Back home · Volver al inicio</a></div></main>;
-  return <Workspace data={data} />;
+  const t = useT();
+  const { locale } = useLocale();
+  const preview = isLocalPreview();
+  const [state, setState] = useState<LoadState>(preview ? "ready" : "loading");
+  const [data, setData] = useState<AccountData | null>(preview ? { session: previewUser, credits: previewCredits, sessions: previewSessions } : null);
+  const [subscriptionFlag, setSubscriptionFlag] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSubscriptionFlag(new URLSearchParams(window.location.search).get("subscription"));
+  }, []);
+
+  const load = useCallback(async () => {
+    if (preview) {
+      setData({ session: previewUser, credits: previewCredits, sessions: previewSessions });
+      setState("ready");
+      return;
+    }
+    setState("loading");
+    try {
+      const [session, credits, sessionsResponse] = await Promise.all([api.session(), api.credits(), api.authSessions()]);
+      setData({ session, credits, sessions: sessionsResponse?.sessions ?? [] });
+      setState("ready");
+    } catch (caught) {
+      const error = caught as ApiError;
+      if (error.status === 401) { window.location.href = "/login?return_to=/account"; return; }
+      setState("error");
+    }
+  }, [preview]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const displayName = data?.session?.username || data?.session?.email?.split("@")[0] || "";
+  const plan = data?.credits?.plan ?? null;
+  const usage = data?.credits?.usage;
+  const upgrade = data?.credits?.upgrade;
+  const percent = typeof usage?.percent === "number" ? Math.min(100, Math.max(0, usage.percent)) : 0;
+  const href = (path: string) => (preview ? previewHref(path) : path);
+  const dateFmt = (value?: string) => value ? new Date(value).toLocaleDateString(locale === "en" ? "en-GB" : locale === "es" ? "es-ES" : "it-IT") : "—";
+
+  const lastSeen = useMemo(() => {
+    const dates = (data?.sessions ?? []).map((session) => session.last_seen_at ?? session.created_at).filter(Boolean) as string[];
+    return dates.sort().at(-1);
+  }, [data]);
+
+  const profileIncomplete = !preview && data ? (!data.session.username || !data.session.tag) : false;
+
+  if (state === "loading") {
+    return (
+      <main className="auth-page">
+        <SiteHeader />
+        <div className="auth-loading"><img src="/logo.webp" alt="From Zero To Hero" /><div className="spinner" /></div>
+      </main>
+    );
+  }
+
+  if (state === "error" || !data) {
+    return (
+      <main className="auth-page">
+        <SiteHeader />
+        <div className="full-screen-center">
+          <div className="error-panel">
+            <h1>{t("account.errorTitle")}</h1>
+            <p>{t("account.errorBody")}</p>
+            <button className="btn btn-primary" onClick={() => void load()}>{t("common.retry")}</button>
+            <a href="/">{t("common.backHome")}</a>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  return (
+    <main className="light-page">
+      <SiteHeader />
+      <section className="hero-dark workspace-hero">
+        <div className="workspace-hero-inner">
+          <div>
+            <p className="eyebrow">{preview ? t("account.demo") : t("account.yourPlatforms")}</p>
+            <h1>{t("account.greeting").split("{name}")[0]}<em>{displayName}</em>{t("account.greeting").split("{name}")[1]}</h1>
+            <p>{t("account.greetingSub")}</p>
+          </div>
+          <a className="btn btn-primary" href={href("/platforms")}>{t("account.explore")} <span className="arrow" aria-hidden>→</span></a>
+        </div>
+      </section>
+      <div className="workspace-body">
+        <div className="workspace-inner">
+          <nav className="workspace-nav" aria-label="Account">
+            <a className="selected" href={href("/account")}>{t("menu.overview")}</a>
+            <a href={href("/account/profile")}>{t("menu.profile")}</a>
+            <a href={href("/account/subscription")}>{t("menu.subscription")}</a>
+            <a href={href("/account/security")}>{t("menu.security")}</a>
+            <a href={href("/account/transactions")}>{t("menu.activity")}</a>
+            <button onClick={async () => { if (!preview) await api.logout().catch(() => {}); window.location.href = "/"; }}>{t("menu.logout")}</button>
+          </nav>
+
+          <div className="workspace-grid">
+            {subscriptionFlag === "success" && <div className="banner-message ok"><Icon name="checkCircle" size={17} /> {t("account.subSuccess")}</div>}
+            {subscriptionFlag === "cancel" && <div className="banner-message info"><Icon name="sparkles" size={17} /> {t("account.subCancel")}</div>}
+            {profileIncomplete && (
+              <div className="banner-message info">
+                <div><strong>{t("account.completeTitle")}</strong> — {t("account.completeBody")}</div>
+                <a className="btn btn-primary" href={href("/account/profile")}>{t("account.completeCta")}</a>
+              </div>
+            )}
+
+            <div className="span-12">
+              <PlatformCards showCredits />
+            </div>
+
+            <article className="card span-6">
+              <p className="eyebrow dark">{t("account.planLabel")}</p>
+              <div className="plan-summary-top">
+                <span className="plan-name">{plan?.name ?? t("account.free")}</span>
+                {plan && plan.active !== false && !plan.cancel_at_period_end && <span className="badge-active">{t("account.active")}</span>}
+                {(plan?.active === false) && <span className="badge-ended">{t("account.ended")}</span>}
+              </div>
+              {plan ? (
+                <>
+                  <div className="progress-track"><div className={`progress-fill ${usage?.overfilled ? "bonus" : ""}`} style={{ width: `${usage?.overfilled ? 100 : percent}%` }} /></div>
+                  <p className="progress-label">{Math.round(usage?.overfilled ? 100 : percent)}% {t("account.used")}</p>
+                  {usage?.overfilled && <p className="card-note">{t("account.bonus")}</p>}
+                  {plan.cancel_at_period_end && <p className="card-note">{t("account.untilEnd").replace("{date}", dateFmt(plan.current_period_end))}</p>}
+                  {plan.active === false && <a className="btn btn-primary" style={{ marginTop: 16 }} href={href("/pricing")}>{t("account.resubscribe")}</a>}
+                  {upgrade?.show && upgrade.url && (
+                    <a className="upgrade-cta" href={preview ? href("/pricing") : upgrade.url}>{upgrade.cta_label ?? t("account.choosePlan")} <span aria-hidden>→</span></a>
+                  )}
+                </>
+              ) : (
+                <>
+                  <p className="card-note" style={{ marginTop: 4 }}><strong>{t("account.noPlan")}</strong> — {t("account.noPlanSub")}</p>
+                  <div className="card-actions"><a className="btn btn-primary" href={href("/pricing")}>{t("account.choosePlan")}</a></div>
+                </>
+              )}
+              <div className="card-actions">
+                <a className="btn btn-outline" href={href("/account/subscription")}>{t("account.managePlan")} <span className="arrow" aria-hidden>→</span></a>
+              </div>
+            </article>
+
+            <article className="card span-6">
+              <p className="eyebrow dark">{t("account.lastAccess")}</p>
+              <div className="last-access">
+                <span className="last-access-icon" aria-hidden><Icon name="clock" size={21} /></span>
+                <div>
+                  <strong>{lastSeen ? new Date(lastSeen).toLocaleString(locale === "en" ? "en-GB" : locale === "es" ? "es-ES" : "it-IT", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—"}</strong>
+                  <small>{t("account.keepBuilding")}</small>
+                </div>
+                <span className="avatar" style={{ marginLeft: "auto" }}>{initials(data.session)}</span>
+              </div>
+            </article>
+          </div>
+        </div>
+      </div>
+      <SiteFooter />
+    </main>
+  );
 }

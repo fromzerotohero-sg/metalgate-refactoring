@@ -1,69 +1,170 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { api, ApiError } from "@/src/lib/api";
+import { isLocalPreview, previewHref } from "@/src/lib/preview";
+import { useT } from "@/src/lib/i18n";
+import { SiteHeader } from "@/src/components/SiteHeader";
+import { SiteFooter } from "@/src/components/SiteFooter";
+import { Icon } from "@/src/components/Icon";
 
-function safeReturnTo(value: string | null) { return value && value.startsWith("/") && !value.startsWith("//") ? value : "/account"; }
+function safeReturnTo(value: string | null) {
+  return value && value.startsWith("/") && !value.startsWith("//") ? value : "/account";
+}
 
 export default function RegisterPage() {
+  const t = useT();
+  const preview = isLocalPreview();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("");
-  const [tag, setTag] = useState("");
   const [referralCode, setReferralCode] = useState("");
-  const [showOptional, setShowOptional] = useState(false);
+  const [accepted, setAccepted] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [message, setMessage] = useState("");
   const [done, setDone] = useState(false);
   const [deliveryFailed, setDeliveryFailed] = useState(false);
   const [busy, setBusy] = useState(false);
-  const returnTo = useMemo(() => typeof window === "undefined" ? "/account" : safeReturnTo(new URLSearchParams(window.location.search).get("return_to")), []);
+  const returnTo = useMemo(() => typeof window === "undefined" ? "/account" : safeReturnTo(new URLSearchParams(window.location.search).get("return_to") ?? new URLSearchParams(window.location.search).get("redirect")), []);
+  const href = (path: string) => (preview ? previewHref(path) : path);
+
+  useEffect(() => {
+    if (preview) return;
+    api.session().then(() => { window.location.href = returnTo; }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (password.length < 8) { setMessage("La password deve avere almeno 8 caratteri. · Password must be at least 8 characters. · La contraseña debe tener al menos 8 caracteres."); return; }
-    setBusy(true); setMessage(""); setDeliveryFailed(false);
+    if (password.length < 8) { setMessage(t("register.passwordShort")); return; }
+    if (!accepted) { setMessage(t("register.acceptRequired")); return; }
+    if (preview) { setDone(true); setMessage(t("register.doneBody")); return; }
+    setBusy(true);
+    setMessage("");
+    setDeliveryFailed(false);
     try {
-      const response = await api.register({ email: email.trim(), password, username: username.trim() || undefined, tag: tag.trim() || undefined, referral_code: referralCode.trim() || undefined, redirect: `${window.location.origin}/verify-email` }) as { verification_email_sent?: boolean };
+      const response = await api.register({
+        email: email.trim(), password,
+        username: username.trim() || undefined,
+        referral_code: referralCode.trim() || undefined,
+        redirect: `${window.location.origin}/verify-email`
+      });
       setDeliveryFailed(response.verification_email_sent === false);
       setDone(true);
-      setMessage(response.verification_email_sent === false ? "L’account è stato creato, ma l’email non è partita. Puoi richiederne un nuovo invio. · Your account was created, but the email failed. Request a new one. · La cuenta se creó, pero el email falló. Solicita uno nuevo." : "Ti abbiamo inviato il link di verifica. · We sent you a verification link. · Te hemos enviado un enlace de verificación.");
-    } catch (error) { setMessage((error as ApiError).message); }
-    finally { setBusy(false); }
+      setMessage(response.verification_email_sent === false ? t("register.doneFailed") : t("register.doneBody"));
+    } catch (error) {
+      setMessage((error as ApiError).message);
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function resendVerification() {
     setBusy(true);
-    try { await api.sendVerification({ email: email.trim(), redirect: `${window.location.origin}/verify-email` }); setDeliveryFailed(false); setMessage("Se l’account è in attesa, la nuova email è in arrivo. · If the account is pending, a new email is on its way. · Si la cuenta está pendiente, recibirás un nuevo email."); }
-    catch (error) { setMessage((error as ApiError).message); }
-    finally { setBusy(false); }
+    try {
+      await api.sendVerification({ email: email.trim(), redirect: `${window.location.origin}/verify-email` });
+      setDeliveryFailed(false);
+      setMessage(t("register.resent"));
+    } catch (error) {
+      setMessage((error as ApiError).message);
+    } finally {
+      setBusy(false);
+    }
   }
 
-  return <main className="form-page auth-page">
-    <a className="brand" href="/"><img src="/logo.webp" alt="From Zero To Hero" /><span>From Zero To Hero</span></a>
-    <div className="auth-layout">
-      <section className="auth-story" aria-label="Vantaggi dell’account">
-        <p className="eyebrow">INIZIA IL TUO PERCORSO</p>
-        <h1>Costruisci il tuo<br /><span>vantaggio.</span></h1>
-        <p>Un profilo leggero per entrare nelle piattaforme, seguire i progressi e avere sempre chiaro il prossimo passo.<br /><span className="muted-inline">A lightweight profile for every platform and next step. · Un perfil sencillo para cada plataforma y siguiente paso.</span></p>
-        <div className="journey-steps"><span className="active">01 <b>Crea</b></span><i /><span>02 <b>Verifica</b></span><i /><span>03 <b>Inizia</b></span></div>
-      </section>
-      <section className="form-card auth-card">
-        {done ? <>
-          <div className="success-mark" aria-hidden>✓</div><p className="eyebrow">QUASI FATTO · ALMOST THERE · CASI LISTO</p><h2>Controlla la tua email.</h2><p className="auth-description">{message}</p><div className="mail-note"><strong>{email}</strong><span>Il link è valido per il tempo indicato nell’email. · The link is valid for the time stated in the email. · El enlace es válido durante el tiempo indicado en el email.</span></div>{deliveryFailed && <button type="button" className="button ghost" onClick={resendVerification} disabled={busy}>{busy ? "Invio… · Sending… · Enviando…" : "Invia di nuovo · Resend · Reenviar"}</button>}<a className="button primary" href={`/login?return_to=${encodeURIComponent(returnTo)}`}>Torna all’accesso · Back to sign in · Volver al acceso <span aria-hidden>→</span></a>
-        </> : <>
-          <div className="auth-card-heading"><p className="eyebrow">IL TUO PERCORSO · YOUR JOURNEY · TU RECORRIDO</p><h2>Crea il tuo accesso.</h2><p>Servono meno di due minuti. Nessun passaggio bloccante. · Under two minutes. No blocking steps. · Menos de dos minutos. Sin pasos bloqueantes.</p></div>
-          <form onSubmit={submit}>
-            <label>Email<input type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} /></label>
-            <label>Password<input type="password" autoComplete="new-password" minLength={8} required value={password} onChange={(event) => setPassword(event.target.value)} /><small className="field-hint">Almeno 8 caratteri · At least 8 characters · Al menos 8 caracteres</small></label>
-            <label>Nome utente <span className="optional">opzionale</span><input autoComplete="nickname" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="Come vuoi essere riconosciuto" /></label>
-            <button type="button" className="optional-toggle" onClick={() => setShowOptional((value) => !value)}>{showOptional ? "Nascondi dettagli opzionali" : "Aggiungi tag o codice invito"} <span aria-hidden>{showOptional ? "↑" : "↓"}</span></button>
-            {showOptional && <div className="optional-fields"><label>Tag <span className="optional">opzionale</span><input value={tag} onChange={(event) => setTag(event.target.value)} placeholder="es. 1234" /></label><label>Codice invito <span className="optional">opzionale</span><input value={referralCode} onChange={(event) => setReferralCode(event.target.value)} /></label></div>}
-            {message && <p className="form-error" role="alert">{message}</p>}
-            <button className="button primary" disabled={busy}>{busy ? "Creazione… · Creating… · Creando…" : "Crea account · Create account · Crear cuenta"}<span aria-hidden>→</span></button>
-          </form>
-          <p className="terms-note">Creando l’account accetti i <a href="/legal/terms">Termini · Terms · Términos</a> e la <a href="/legal/privacy">Privacy · Privacidad</a>.</p><p className="auth-switch">Hai già un account? · Already have an account? · ¿Ya tienes cuenta? <a href={`/login?return_to=${encodeURIComponent(returnTo)}`}>Accedi · Sign in · Entrar</a></p>
-        </>}
-      </section>
-    </div>
-  </main>;
+  return (
+    <main className="auth-page">
+      <SiteHeader />
+      <div className="auth-hero">
+        <div className="auth-layout">
+          <section className="auth-copy">
+            <p className="eyebrow">{t("home.eyebrow")}</p>
+            <h1 className="hero-title">{t("register.heroTitle1")}<br /><em>{t("register.heroTitle2")}</em></h1>
+            <p className="hero-lead">{t("register.heroLead")}</p>
+            <div className="auth-feats">
+              <div className="auth-feat"><span className="auth-feat-icon" aria-hidden><Icon name="book" size={21} /></span><div><strong>{t("register.feat1t")}</strong><small>{t("register.feat1d")}</small></div></div>
+              <div className="auth-feat"><span className="auth-feat-icon" aria-hidden><Icon name="chart" size={21} /></span><div><strong>{t("register.feat2t")}</strong><small>{t("register.feat2d")}</small></div></div>
+              <div className="auth-feat"><span className="auth-feat-icon" aria-hidden><Icon name="users" size={21} /></span><div><strong>{t("register.feat3t")}</strong><small>{t("register.feat3d")}</small></div></div>
+            </div>
+          </section>
+          <section className="auth-card">
+            {done ? (
+              <>
+                <div className="success-mark" aria-hidden><Icon name="check" size={26} /></div>
+                <p className="eyebrow dark">{t("register.doneEyebrow")}</p>
+                <h2>{t("register.doneTitle")}</h2>
+                <p className="auth-card-lead">{message}</p>
+                <div className="mail-note"><strong>{email}</strong><span>{t("register.doneValidity")}</span></div>
+                {deliveryFailed && !preview && (
+                  <button type="button" className="btn btn-outline btn-block" onClick={resendVerification} disabled={busy}>
+                    {busy ? t("register.resending") : t("register.resend")}
+                  </button>
+                )}
+                <a className="btn btn-primary btn-block" style={{ marginTop: 14 }} href={href(`/login?return_to=${encodeURIComponent(returnTo)}`)}>{t("register.backLogin")} <span className="arrow" aria-hidden>→</span></a>
+              </>
+            ) : (
+              <>
+                <h1>{t("register.cardTitle")}</h1>
+                <p className="auth-card-lead">{t("register.cardLead")}</p>
+                <form onSubmit={submit}>
+                  <div className="field">
+                    <div className="field-input">
+                      <span className="field-icon" aria-hidden><Icon name="mail" size={16} /></span>
+                      <input type="email" autoComplete="email" required placeholder={t("login.emailPh")} value={email} onChange={(event) => setEmail(event.target.value)} />
+                    </div>
+                  </div>
+                  <div className="field">
+                    <div className="field-input">
+                      <span className="field-icon" aria-hidden><Icon name="user" size={16} /></span>
+                      <input autoComplete="nickname" placeholder={t("register.usernamePh")} value={username} onChange={(event) => setUsername(event.target.value)} />
+                    </div>
+                    <small className="field-hint">{t("register.usernameHint")}</small>
+                  </div>
+                  <div className="field">
+                    <div className="field-input">
+                      <span className="field-icon" aria-hidden><Icon name="lock" size={16} /></span>
+                      <input type={showPassword ? "text" : "password"} autoComplete="new-password" minLength={8} required placeholder={t("register.passwordPh")} value={password} onChange={(event) => setPassword(event.target.value)} />
+                      <button type="button" className="password-toggle" onClick={() => setShowPassword((value) => !value)}>{showPassword ? t("login.hide") : t("login.show")}</button>
+                    </div>
+                    <small className="field-hint">{t("register.passwordHint")}</small>
+                  </div>
+                  <div className="field">
+                    <div className="field-input">
+                      <span className="field-icon" aria-hidden><Icon name="gift" size={16} /></span>
+                      <input placeholder={t("register.invitePh")} value={referralCode} onChange={(event) => setReferralCode(event.target.value)} />
+                    </div>
+                    <small className="field-hint">{t("register.inviteHint")}</small>
+                  </div>
+                  <label className="checkbox-row">
+                    <input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} />
+                    <span>{t("register.acceptPrefix")}<a href={href("/legal/terms")} target="_blank" rel="noopener noreferrer">{t("register.terms")}</a>{t("register.acceptAnd")}<a href={href("/legal/privacy")} target="_blank" rel="noopener noreferrer">{t("register.privacy")}</a>.</span>
+                  </label>
+                  {message && <p className="form-error" role="alert">{message}</p>}
+                  <button className="btn btn-primary btn-block" disabled={busy}>{busy ? t("register.submitting") : t("register.submit")} <span className="arrow" aria-hidden>→</span></button>
+                </form>
+                <p className="auth-switch">{t("register.haveAccount")} <a href={href(`/login?return_to=${encodeURIComponent(returnTo)}`)}>{t("register.login")}</a></p>
+              </>
+            )}
+          </section>
+          <div className="auth-below">
+            <div className="mini-steps">
+              <p className="mini-steps-title">{t("register.stepsTitle")}</p>
+              {[1, 2, 3].map((step) => (
+                <div className="mini-step" key={step}>
+                  <span className="mini-step-icon" aria-hidden><Icon name={step === 1 ? "user" : step === 2 ? "mail" : "checkCircle"} size={19} /></span>
+                  <strong>{step}. {t(`register.step${step}t`)}</strong>
+                  <small>{t(`register.step${step}d`)}</small>
+                </div>
+              ))}
+            </div>
+            <div className="auth-safe" style={{ marginTop: 18 }}>
+              <span className="auth-note-icon" aria-hidden><Icon name="shieldCheck" size={18} /></span>
+              <span>{t("register.emailSafe")}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <SiteFooter />
+    </main>
+  );
 }

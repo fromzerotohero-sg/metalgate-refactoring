@@ -1,69 +1,249 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { api, ApiError } from "@/src/lib/api";
-import { isLocalPreview, previewAccount } from "@/src/lib/preview";
+import { api, ApiError, type AuthSession, type CreditsPayload, type SessionUser, type Transaction } from "@/src/lib/api";
+import { isLocalPreview, previewCredits, previewHref, previewSessions, previewTransactions, previewUser } from "@/src/lib/preview";
+import { useT } from "@/src/lib/i18n";
+import { SiteHeader } from "@/src/components/SiteHeader";
+import { SiteFooter } from "@/src/components/SiteFooter";
+import { Icon } from "@/src/components/Icon";
 
-const titles: Record<string, { eyebrow: string; title: string; intro: string }> = {
-  profile: { eyebrow: "IDENTITÀ · IDENTITY · IDENTIDAD", title: "Il tuo profilo.", intro: "Un’identità riconoscibile in tutto l’ecosistema. · One identity across the ecosystem. · Una identidad en todo el ecosistema." },
-  subscription: { eyebrow: "PIANO · PLAN", title: "Tutto sotto controllo.", intro: "Piano, utilizzo e abbonamento in un unico posto. · Plan, usage and subscription in one place. · Plan, uso y suscripción en un solo lugar." },
-  security: { eyebrow: "SICUREZZA · SECURITY · SEGURIDAD", title: "Proteggi il tuo accesso.", intro: "Gestisci password e dispositivi. · Manage passwords and devices. · Gestiona contraseñas y dispositivos." },
-  transactions: { eyebrow: "ATTIVITÀ · ACTIVITY · ACTIVIDAD", title: "Il tuo percorso.", intro: "Le operazioni recenti, a colpo d’occhio. · Recent activity at a glance. · Actividad reciente de un vistazo." }
-};
+type SectionKey = "profile" | "subscription" | "security" | "transactions";
 
 export default function AccountSectionPage() {
-  const { section } = useParams<{ section: string }>();
+  const params = useParams<{ section: string }>();
+  const section = (["profile", "subscription", "security", "transactions"].includes(params.section) ? params.section : "profile") as SectionKey;
+  const t = useT();
   const preview = isLocalPreview();
-  const content = titles[section] ?? titles.profile;
-  const [data, setData] = useState<any>();
-  const [user, setUser] = useState<any>();
+
+  const [user, setUser] = useState<SessionUser | null>(preview ? previewUser : null);
+  const [credits, setCredits] = useState<CreditsPayload | null>(preview ? previewCredits : null);
+  const [sessions, setSessions] = useState<AuthSession[]>(preview ? previewSessions : []);
+  const [transactions, setTransactions] = useState<Transaction[]>(preview ? previewTransactions : []);
   const [message, setMessage] = useState("");
+  const [ok, setOk] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [username, setUsername] = useState("");
-  const [tag, setTag] = useState("");
+  const [username, setUsername] = useState(preview ? previewUser.username ?? "" : "");
+  const [tag, setTag] = useState(preview ? previewUser.tag ?? "" : "");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
 
-  const load = async () => {
-    setBusy(true); setMessage("");
-    try {
-      if (isLocalPreview()) {
-        if (section === "profile") { setUser(previewAccount.me); setUsername(previewAccount.me.username); setTag(previewAccount.me.tag); }
-        else if (section === "subscription") setData(previewAccount.credits);
-        else if (section === "security") setData({ sessions: previewAccount.sessions });
-        else setData({ transactions: previewAccount.transactions });
-        return;
-      }
-      if (section === "profile") { const result: any = await api.me(); setUser(result); setUsername(result.username ?? ""); setTag(result.tag ?? ""); }
-      else if (section === "subscription") setData(await api.credits());
-      else if (section === "security") setData(await api.authSessions());
-      else setData(await api.transactions());
-    } catch (error) {
-      const e = error as ApiError;
-      if (e.status === 401) window.location.href = `/login?return_to=/account/${section}`;
-      else setMessage(`${e.message} · Request failed. · La solicitud ha fallado.`);
-    } finally { setBusy(false); }
-  };
-  useEffect(() => { void load(); }, [section]);
-
-  async function saveProfile(e: FormEvent) {
-    e.preventDefault(); setBusy(true);
-    try { await api.profile({ username, tag }); setMessage("Profilo aggiornato. · Profile updated. · Perfil actualizado."); }
-    catch (error) { setMessage(`${(error as ApiError).message} · Update failed. · Actualización fallida.`); }
-    finally { setBusy(false); }
-  }
-  async function changePassword(e: FormEvent) {
-    e.preventDefault();
-    if (newPassword.length < 8) { setMessage("La nuova password deve avere almeno 8 caratteri. · Password must be at least 8 characters. · La contraseña debe tener al menos 8 caracteres."); return; }
+  const load = useCallback(async () => {
+    setMessage("");
+    setOk(false);
+    if (preview) {
+      setUser(previewUser); setCredits(previewCredits); setSessions(previewSessions); setTransactions(previewTransactions);
+      setUsername(previewUser.username ?? ""); setTag(previewUser.tag ?? "");
+      return;
+    }
     setBusy(true);
-    try { await api.changePassword({ current_password: currentPassword, new_password: newPassword }); setMessage("Password aggiornata. Gli altri dispositivi sono stati disconnessi. · Password updated; other devices signed out. · Contraseña actualizada; otros dispositivos desconectados."); setCurrentPassword(""); setNewPassword(""); await load(); }
-    catch (error) { setMessage(`${(error as ApiError).message} · Password update failed. · No se pudo actualizar la contraseña.`); }
-    finally { setBusy(false); }
+    try {
+      if (section === "profile") {
+        const result = await api.me() as SessionUser;
+        setUser(result);
+        setUsername(result.username ?? "");
+        setTag(result.tag ?? "");
+      } else if (section === "subscription") {
+        setCredits(await api.credits());
+      } else if (section === "security") {
+        setSessions((await api.authSessions()).sessions ?? []);
+      } else {
+        setTransactions((await api.transactions()).transactions ?? []);
+      }
+    } catch (caught) {
+      const error = caught as ApiError;
+      if (error.status === 401) { window.location.href = `/login?return_to=/account/${section}`; return; }
+      setMessage(error.message || t("common.error"));
+    } finally {
+      setBusy(false);
+    }
+  }, [preview, section, t]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  async function saveProfile(event: FormEvent) {
+    event.preventDefault();
+    if (preview) { setOk(true); setMessage(t("section.profile.saved")); return; }
+    setBusy(true);
+    setMessage("");
+    try {
+      await api.profile({ username, tag });
+      setOk(true);
+      setMessage(t("section.profile.saved"));
+    } catch (error) {
+      setOk(false);
+      setMessage((error as ApiError).message || t("common.error"));
+    } finally {
+      setBusy(false);
+    }
   }
 
-  const remaining = data?.credits?.total_remaining;
-  const allowance = data?.usage?.credits_allowance ?? data?.plan?.credits_per_period;
-  const used = data?.usage?.credits_used;
-  return <main className="simple-page"><a className="brand" href="/"><img src="/logo.webp" alt="From Zero To Hero" /><span>From Zero To Hero</span></a><section className="simple-content account-section"><a className="back-link" href={preview ? "/account?preview=1" : "/account"}>← Torna alla panoramica · Back to overview · Volver al resumen</a><p className="eyebrow">{content.eyebrow}</p><h1>{content.title}</h1><p className="section-intro">{content.intro}</p>{message && <div className="inline-message" role="status">{message}</div>}{section === "profile" && <div className="section-layout"><form className="surface form-surface" onSubmit={saveProfile}><h2>Informazioni pubbliche · Public details · Datos públicos</h2><p>Questi dati ti accompagnano nelle piattaforme. · These details follow you across platforms. · Estos datos te acompañan en las plataformas.</p><label>Username<input value={username} onChange={e => setUsername(e.target.value)} /></label><label>Tag giocatore · Player tag · Tag de jugador<input value={tag} onChange={e => setTag(e.target.value)} placeholder="es. 1234" /></label><button className="button primary" disabled={busy}>{busy ? "Salvataggio… · Saving… · Guardando…" : "Salva modifiche · Save changes · Guardar cambios"}</button></form><article className="surface info-surface"><p className="eyebrow">ACCOUNT · CUENTA</p><h2>{user?.email ?? ""}</h2><p>L’email non viene mostrata pubblicamente. · Your email is never public. · Tu email nunca es público.</p><button className="danger-link" onClick={async () => { if (!window.confirm("Eliminare definitivamente l’account? Questa azione non può essere annullata. · Permanently delete the account? This cannot be undone. · ¿Eliminar la cuenta definitivamente? No se puede deshacer.")) return; await api.deleteAccount(); window.location.href = "/"; }}>Elimina account · Delete account · Eliminar cuenta</button></article></div>}{section === "subscription" && <div className="section-layout"><article className="surface info-surface"><p className="eyebrow">PIANO ATTUALE · CURRENT PLAN · PLAN ACTUAL</p><h2>{data?.plan?.name ?? "Free"}</h2><div className="progress-line"><span style={{ width: `${Math.min(100, data?.usage?.percent ?? 0)}%` }} /></div><p>{data?.usage?.percent ?? 0}% utilizzato · used · usado</p>{(remaining !== undefined || allowance !== undefined) && <div className="quota-detail"><strong>{remaining ?? "—"} crediti disponibili · credits remaining · créditos disponibles</strong><span>{used ?? "—"} utilizzati su {allowance ?? "—"} · used of · usados de</span></div>}{data?.usage?.overfilled && <div className="inline-message">Crediti bonus attivi · Bonus credits active · Créditos extra activos</div>}{data?.plan?.cancel_at_period_end && <div className="inline-message">Il piano resta attivo fino al termine del periodo. · Active until period end. · Activo hasta el final del periodo.</div>}{data?.plan?.active === false && <div className="inline-message">L’abbonamento è terminato. · Subscription ended. · La suscripción ha terminado.</div>}<a className="button primary" href={preview ? "/pricing?preview=1" : "/pricing"}>Vedi i piani · View plans · Ver planes</a></article><article className="surface info-surface"><p className="eyebrow">GESTIONE · MANAGEMENT · GESTIÓN</p><h2>Gestisci il tuo abbonamento</h2><p>Cambia piano, metodo di pagamento o annulla nel portale sicuro. · Change plan, payment method or cancel in the secure portal. · Cambia plan, pago o cancela en el portal seguro.</p><button className="button ghost" onClick={() => { if (preview) { setMessage("Modalità demo: portale Stripe disattivato. · Demo mode: Stripe portal disabled. · Modo demo: portal Stripe desactivado."); return; } void api.portal(window.location.origin + "/account/subscription").then(result => { window.location.href = result.url; }).catch(error => setMessage(`${(error as ApiError).message} · Portal unavailable. · Portal no disponible.`)); }}>Apri portale Stripe · Open Stripe portal · Abrir portal Stripe →</button></article></div>}{section === "security" && <div className="section-layout"><article className="surface form-surface"><h2>Cambia password · Change password · Cambiar contraseña</h2><form onSubmit={changePassword}><label>Password attuale · Current password · Contraseña actual<input type="password" required value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} /></label><label>Nuova password · New password · Nueva contraseña<input type="password" minLength={8} required value={newPassword} onChange={e => setNewPassword(e.target.value)} /></label><button className="button primary" disabled={busy}>Aggiorna · Update · Actualizar</button></form></article><article className="surface info-surface"><h2>I tuoi dispositivi · Your devices · Tus dispositivos</h2>{(data?.sessions ?? []).map((session: any) => <div className="device-row" key={session.id}><span className="device-icon">{session.current ? "●" : "○"}</span><div><strong>{session.current ? "Questo dispositivo · This device · Este dispositivo" : session.service ?? "Altro dispositivo · Other device · Otro dispositivo"}</strong><small>{session.user_agent ?? "Sessione attiva · Active session · Sesión activa"}</small></div>{!session.current && <button className="text-button" onClick={() => api.revokeSession(session.id).then(load).catch(error => setMessage(`${(error as ApiError).message} · Sign-out failed. · Desconexión fallida.`))}>Disconnetti · Sign out · Desconectar</button>}</div>)}<button className="danger-link" onClick={async () => { await api.logoutAll(); window.location.href = "/login"; }}>Disconnetti gli altri · Sign out others · Desconectar los demás</button></article></div>}{section === "transactions" && <article className="surface transaction-surface">{(data?.transactions ?? []).length ? (data.transactions as any[]).map(transaction => <div className="transaction-row" key={transaction.id}><div><strong>{transaction.description}</strong><small>{transaction.timestamp ? new Date(transaction.timestamp).toLocaleString("it-IT") : ""}</small></div><b className={transaction.amount > 0 ? "positive" : "negative"}>{transaction.amount > 0 ? "+" : ""}{transaction.amount}</b></div>) : <div className="empty-state"><span>✦</span><p>Nessuna attività. · No activity yet. · Aún no hay actividad.</p></div>}</article>}</section></main>;
+  async function changePassword(event: FormEvent) {
+    event.preventDefault();
+    if (newPassword.length < 8) { setOk(false); setMessage(t("register.passwordShort")); return; }
+    if (preview) { setOk(true); setMessage(t("section.security.updated")); setCurrentPassword(""); setNewPassword(""); return; }
+    setBusy(true);
+    setMessage("");
+    try {
+      await api.changePassword({ current_password: currentPassword, new_password: newPassword });
+      setOk(true);
+      setMessage(t("section.security.updated"));
+      setCurrentPassword("");
+      setNewPassword("");
+      await load();
+    } catch (error) {
+      setOk(false);
+      setMessage((error as ApiError).message || t("common.error"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function openPortal() {
+    if (preview) { setOk(false); setMessage(t("section.subscription.portalDisabled")); return; }
+    api.portal(window.location.origin + "/account/subscription")
+      .then((result) => { window.location.href = result.url; })
+      .catch((error: ApiError) => setMessage(error.message || t("common.error")));
+  }
+
+  const href = (path: string) => (preview ? previewHref(path) : path);
+  const usage = credits?.usage;
+  const plan = credits?.plan;
+  const percent = typeof usage?.percent === "number" ? Math.min(100, Math.max(0, usage.percent)) : 0;
+
+  return (
+    <main className="light-page">
+      <SiteHeader />
+      <section className="page-hero">
+        <p className="eyebrow">{t(`section.${section}.eyebrow`)}</p>
+        <h1>{t(`section.${section}.title`)}</h1>
+        <p>{t(`section.${section}.intro`)}</p>
+      </section>
+      <div className="page-body" style={{ maxWidth: 980 }}>
+        <a className="back-link" href={href("/account")}>← {t("section.back")}</a>
+        {message && <div className={ok ? "form-ok" : "form-error"} role="status" style={{ marginBottom: 20 }}>{message}</div>}
+
+        {section === "profile" && (
+          <div className="section-layout">
+            <article className="card">
+              <h2>{t("section.profile.public")}</h2>
+              <p className="card-note">{t("section.profile.publicDesc")}</p>
+              <form className="account-form" onSubmit={saveProfile}>
+                <div className="field">
+                  <span className="field-label">{t("section.profile.username")}</span>
+                  <div className="field-input"><input value={username} onChange={(event) => setUsername(event.target.value)} /></div>
+                </div>
+                <div className="field">
+                  <span className="field-label">{t("section.profile.tag")}</span>
+                  <div className="field-input"><input value={tag} onChange={(event) => setTag(event.target.value)} placeholder="1234" /></div>
+                </div>
+                <button className="btn btn-primary" disabled={busy}>{busy ? t("section.profile.saving") : t("section.profile.save")}</button>
+              </form>
+            </article>
+            <article className="card">
+              <p className="eyebrow dark">{t("section.profile.account")}</p>
+              <h2 style={{ wordBreak: "break-all" }}>{user?.email ?? ""}</h2>
+              <p className="card-note">{t("section.profile.emailNote")}</p>
+              {!preview && (
+                <button className="danger-link" onClick={async () => {
+                  if (!window.confirm(t("section.profile.deleteConfirm"))) return;
+                  await api.deleteAccount().catch(() => {});
+                  window.location.href = "/";
+                }}>{t("section.profile.delete")}</button>
+              )}
+            </article>
+          </div>
+        )}
+
+        {section === "subscription" && (
+          <div className="section-layout">
+            <article className="card">
+              <p className="eyebrow dark">{t("section.subscription.current")}</p>
+              <div className="plan-summary-top">
+                <span className="plan-name">{plan?.name ?? t("account.free")}</span>
+                {plan && plan.active !== false && !plan.cancel_at_period_end && <span className="badge-active">{t("account.active")}</span>}
+                {plan?.active === false && <span className="badge-ended">{t("section.subscription.ended")}</span>}
+              </div>
+              {plan && (
+                <>
+                  <div className="progress-track"><div className={`progress-fill ${usage?.overfilled ? "bonus" : ""}`} style={{ width: `${usage?.overfilled ? 100 : percent}%` }} /></div>
+                  <p className="progress-label">{Math.round(usage?.overfilled ? 100 : percent)}% {t("account.used")}</p>
+                  {usage?.overfilled && <div className="inline-message">{t("section.subscription.bonus")}</div>}
+                  {plan.cancel_at_period_end && <div className="inline-message">{t("section.subscription.untilEnd")}</div>}
+                  {plan.active === false && <div className="inline-message">{t("section.subscription.ended")}</div>}
+                </>
+              )}
+              <div className="card-actions">
+                <a className="btn btn-primary" href={href("/pricing")}>{t("section.subscription.viewPlans")}</a>
+              </div>
+            </article>
+            <article className="card">
+              <p className="eyebrow dark">{t("section.subscription.manage")}</p>
+              <h2>{t("section.subscription.manageTitle")}</h2>
+              <p className="card-note">{t("section.subscription.manageDesc")}</p>
+              <div className="card-actions">
+                <button className="btn btn-outline" onClick={openPortal}>{t("section.subscription.openPortal")} →</button>
+              </div>
+            </article>
+          </div>
+        )}
+
+        {section === "security" && (
+          <div className="section-layout">
+            <article className="card">
+              <h2>{t("section.security.change")}</h2>
+              <form className="account-form" onSubmit={changePassword}>
+                <div className="field">
+                  <span className="field-label">{t("section.security.current")}</span>
+                  <div className="field-input"><input type="password" required value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} /></div>
+                </div>
+                <div className="field">
+                  <span className="field-label">{t("section.security.new")}</span>
+                  <div className="field-input"><input type="password" minLength={8} required value={newPassword} onChange={(event) => setNewPassword(event.target.value)} /></div>
+                  <small className="field-hint">{t("register.passwordHint")}</small>
+                </div>
+                <button className="btn btn-primary" disabled={busy}>{t("section.security.update")}</button>
+              </form>
+            </article>
+            <article className="card">
+              <h2>{t("section.security.devices")}</h2>
+              {sessions.map((session) => (
+                <div className="device-row" key={session.id}>
+                  <span className={`device-dot ${session.current ? "" : "off"}`}>●</span>
+                  <div>
+                    <strong>{session.current ? t("section.security.thisDevice") : session.service ?? t("section.security.otherDevice")}</strong>
+                    <small>{session.user_agent ?? t("section.security.activeSession")}</small>
+                  </div>
+                  {!session.current && !preview && (
+                    <button className="text-button" onClick={() => api.revokeSession(session.id).then(load).catch((error: ApiError) => setMessage(error.message))}>{t("section.security.disconnect")}</button>
+                  )}
+                </div>
+              ))}
+              {!preview && (
+                <button className="danger-link" onClick={async () => { await api.logoutAll().catch(() => {}); window.location.href = "/login"; }}>{t("section.security.disconnectOthers")}</button>
+              )}
+            </article>
+          </div>
+        )}
+
+        {section === "transactions" && (
+          <article className="card">
+            {transactions.length ? transactions.map((transaction) => (
+              <div className="transaction-row" key={transaction.id}>
+                <div>
+                  <strong>{transaction.description}</strong>
+                  <small>{transaction.timestamp ? new Date(transaction.timestamp).toLocaleString() : ""}</small>
+                </div>
+                <span className={`transaction-amount ${transaction.amount > 0 ? "positive" : ""}`}>{transaction.amount > 0 ? "+" : ""}{transaction.amount}</span>
+              </div>
+            )) : (
+              <div className="empty-state"><span><Icon name="sparkles" size={26} /></span><p>{t("section.transactions.empty")}</p></div>
+            )}
+          </article>
+        )}
+      </div>
+      <SiteFooter />
+    </main>
+  );
 }
