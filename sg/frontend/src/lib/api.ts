@@ -41,8 +41,13 @@ export type Usage = {
 /**
  * The upgrade call to action. The API decides when to show it — at or within the
  * threshold of the allowance, or when the user has no plan at all (in which case
- * `reason` is `"no_plan"` and `next_plan` is the entry plan). Render `cta_label`
- * verbatim and link to `url`; both are owned by the backend.
+ * `reason` is `"no_plan"` and `next_plan` is the entry plan). `url` is owned by the
+ * backend; always link to it.
+ *
+ * `cta_label` is **English only** — the API has no locale, and the server uses the
+ * same sentence for both `reason` values, varying just the plan name. A translated
+ * app should therefore build the wording from `next_plan.name` (see `upgradeLabel`
+ * in the account page) and keep `cta_label` only as a fallback.
  */
 export type Upgrade = {
   show: boolean;

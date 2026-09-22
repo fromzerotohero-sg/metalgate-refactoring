@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, ApiError, type AuthSession, type CreditsPayload, type SessionUser } from "@/src/lib/api";
+import { api, ApiError, type AuthSession, type CreditsPayload, type SessionUser, type Upgrade } from "@/src/lib/api";
 import { isLocalPreview, previewCredits, previewHref, previewSessions, previewUser } from "@/src/lib/preview";
 import { useT, useLocale } from "@/src/lib/i18n";
 import { SiteHeader } from "@/src/components/SiteHeader";
@@ -55,6 +55,25 @@ export default function AccountPage() {
   const percent = typeof usage?.percent === "number" ? Math.min(100, Math.max(0, usage.percent)) : 0;
   const href = (path: string) => (preview ? previewHref(path) : path);
   const dateFmt = (value?: string) => value ? new Date(value).toLocaleDateString(locale === "en" ? "en-GB" : locale === "es" ? "es-ES" : "it-IT") : "—";
+
+  /**
+   * The wording on the upgrade call to action.
+   *
+   * The API decides *when* to offer an upgrade and *which* plan it points at, and it
+   * also sends a ready-made `cta_label`. The words still belong here: every other
+   * string on this page is translated and the API has no notion of a locale, so
+   * rendering its label verbatim dropped an English sentence into an Italian page.
+   *
+   * The server uses the *same* sentence for both `reason` values — only the plan name
+   * differs — so interpolating `next_plan.name` into the translation reproduces the
+   * product's wording exactly, in the user's language, rather than inventing new copy.
+   * `cta_label` remains the fallback so an offer this build cannot describe still
+   * renders a button.
+   */
+  const upgradeLabel = (offer?: Upgrade | null) => {
+    if (offer?.next_plan?.name) return t("account.upgradeLimits").replace("{plan}", offer.next_plan.name);
+    return offer?.cta_label ?? t("account.choosePlan");
+  };
 
   const lastSeen = useMemo(() => {
     const dates = (data?.sessions ?? []).map((session) => session.last_seen_at ?? session.created_at).filter(Boolean) as string[];
@@ -141,7 +160,7 @@ export default function AccountPage() {
                   {plan.cancel_at_period_end && <p className="card-note">{t("account.untilEnd").replace("{date}", dateFmt(plan.current_period_end))}</p>}
                   {plan.active === false && <a className="btn btn-primary" style={{ marginTop: 16 }} href={href("/pricing")}>{t("account.resubscribe")}</a>}
                   {upgrade?.show && upgrade.url && (
-                    <a className="upgrade-cta" href={preview ? href("/pricing") : upgrade.url}>{upgrade.cta_label ?? t("account.choosePlan")} <span aria-hidden>→</span></a>
+                    <a className="upgrade-cta" href={preview ? href("/pricing") : upgrade.url}>{upgradeLabel(upgrade)} <span aria-hidden>→</span></a>
                   )}
                 </>
               ) : (
@@ -156,7 +175,7 @@ export default function AccountPage() {
                      * backend is configured with.
                      */}
                     <a className="btn btn-primary" href={preview ? href("/pricing") : upgrade?.url ?? href("/pricing")}>
-                      {upgrade?.cta_label ?? t("account.choosePlan")}
+                      {upgradeLabel(upgrade)}
                     </a>
                   </div>
                 </>

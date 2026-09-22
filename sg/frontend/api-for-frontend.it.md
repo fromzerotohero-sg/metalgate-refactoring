@@ -345,9 +345,16 @@ il piano corrente e la call to action per l'upgrade.
   annullato. Mostra "il tuo abbonamento è terminato" più una CTA per riabbonarsi.
 - **`plan.cancel_at_period_end === true`** significa che è annullato ma ancora attivo
   fino a `current_period_end`. Dillo.
-- **`upgrade` può essere `null`** — mostra la CTA solo quando è presente. Usa
-  `upgrade.cta_label` come testo del pulsante e `upgrade.url` come link; non costruire
-  tu il testo, è generato lato server così resta coerente.
+- **`upgrade` può essere `null`** — mostra la CTA solo quando è presente. Il link è
+  `upgrade.url`, ed è il backend a deciderlo.
+
+  **`upgrade.cta_label` è solo in inglese.** L'API non ha un concetto di lingua e usa la
+  stessa frase per entrambi i valori di `reason`, variando solo il nome del piano. Un'app
+  tradotta deve quindi costruirsi il testo da sola dal nome del piano — per esempio una
+  stringa `cta.upgrade` pari a `"Passa a {plan} per limiti più alti"` per ogni lingua,
+  con `{plan}` sostituito da `upgrade.next_plan.name` — e tenere `cta_label` solo come
+  fallback. Renderizzare `cta_label` alla lettera è ciò che mette un pulsante in inglese
+  in mezzo a una pagina tradotta.
 - **Ignora il blocco `credits` per la visualizzazione all'utente.**
 
 ### `GET /api/plans`

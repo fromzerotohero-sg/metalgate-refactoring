@@ -341,9 +341,16 @@ action.
   "your subscription has ended" plus a resubscribe CTA.
 - **`plan.cancel_at_period_end === true`** means it is cancelled but still running
   until `current_period_end`. Say so.
-- **`upgrade` may be `null`** — show the CTA only when it is present. Use
-  `upgrade.cta_label` as the button text and `upgrade.url` as the link; do not build
-  the wording yourself, it is generated server-side so it stays consistent.
+- **`upgrade` may be `null`** — show the CTA only when it is present. Link to
+  `upgrade.url`, which is owned by the backend.
+
+  **`upgrade.cta_label` is English only.** The API has no locale, and it uses the same
+  sentence for both `reason` values, varying only the plan name. A translated app
+  should build the wording itself from the plan name — for example a `cta.upgrade`
+  string of `"Upgrade to {plan} to have higher limits"` in each language, with
+  `{plan}` replaced by `upgrade.next_plan.name` — and keep `cta_label` purely as a
+  fallback. Rendering `cta_label` verbatim is what puts an English button in the
+  middle of a translated page.
 - **Ignore the `credits` block for user-facing display.**
 
 ### `GET /api/plans`

@@ -302,7 +302,12 @@ def upgrade_offer(current_plan_id: str | None, percent: float, threshold: int) -
         "reason": reason,
         "threshold_percent": threshold,
         "next_plan": target,
-        # Exactly the wording the product asked for, with the plan name filled in.
+        # The wording the product asked for, with the plan name filled in — but in
+        # **English only**. This service has no locale, so a client that translates
+        # its own interface should build the sentence from `next_plan.name` instead;
+        # rendering this verbatim is what puts an English label in the middle of a
+        # translated page. Kept because not every consumer localises: a platform
+        # backend, or a dashboard, may just print it.
         "cta_label": f"Upgrade to {target['name']} to have higher limits",
         "url": current_app.config["STORE_URL"],
     }

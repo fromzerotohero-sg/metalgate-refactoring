@@ -166,6 +166,14 @@ Platforms get the same `plan` / `usage` / `upgrade` block inline on
 `/api/sso/introspect`, `/api/sso/token`, `/api/sso/verify`, and
 `/api/internal/balance`, so rendering the bar and the upsell needs no second call.
 
+`cta_label` is **English only**, and this service has no locale: the server builds the
+same sentence for both `reason` values and only varies the plan name. A client that
+translates its interface should compose the wording itself from `next_plan.name`
+(interpolating the name into its own translated string) and treat `cta_label` as a
+fallback. Rendering it verbatim is what puts an English button in the middle of a
+translated page. The frontend's `upgradeLabel` in `app/account/page.tsx` is the
+reference implementation.
+
 ## Campaign email sending
 
 Campaigns are sent through Resend's **batch endpoint**: up to 100 recipients per
