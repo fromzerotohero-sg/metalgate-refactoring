@@ -5,9 +5,14 @@ export type IconName =
   | "zap" | "infinity" | "grid" | "book" | "chart" | "users"
   | "shield" | "shieldCheck" | "check" | "checkCircle" | "clock"
   | "sprout" | "crown" | "gem" | "sparkles" | "bell"
-  | "menu" | "close" | "arrowRight" | "globe";
+  | "menu" | "close" | "arrowRight" | "globe" | "apple" | "playStore";
 
-const PATHS: Record<IconName, JSX.Element> = {
+const FILLED: Record<string, JSX.Element> = {
+  apple: <path d="M16.7 12.9c0-2.4 2-3.6 2.1-3.7-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.7.9-.8 0-2-.9-3.2-.9-1.7 0-3.2 1-4.1 2.5-1.7 3-.4 7.4 1.3 9.8.8 1.2 1.8 2.5 3.1 2.4 1.2-.1 1.7-.8 3.2-.8s1.9.8 3.2.8c1.3 0 2.2-1.2 3-2.4.9-1.4 1.3-2.7 1.3-2.8-.1 0-2.6-1-2.7-3.9zM14.2 5.4c.7-.8 1.1-1.9 1-3-1 0-2.1.6-2.8 1.4-.6.7-1.1 1.9-1 2.9 1 .1 2.1-.5 2.8-1.3z" />,
+  playStore: <><path d="M4.2 3.1c-.3.2-.5.6-.5 1.1v15.6c0 .5.2.9.5 1.1l8.8-8.9L4.2 3.1z" /><path d="M15.8 9.2 13 12l2.8 2.8 3.6-2c.8-.4.8-1.2 0-1.6l-3.6-2z" /><path d="m6.5 2.4 6.5 6.5 2.8-2.8-7.5-4.2c-.7-.4-1.4-.3-1.8.5zm0 19.2 6.5-6.5 2.8 2.8-7.5 4.2c-.7.4-1.4.3-1.8-.5z" /></>
+};
+
+const PATHS: Record<Exclude<IconName, "apple" | "playStore">, JSX.Element> = {
   mail: <><rect x="3" y="5" width="18" height="14" rx="2.5" /><path d="m3.5 7.5 8.5 6 8.5-6" /></>,
   lock: <><rect x="5" y="11" width="14" height="9.5" rx="2.5" /><path d="M8 11V7.5a4 4 0 0 1 8 0V11" /><circle cx="12" cy="15.7" r="1.3" fill="currentColor" stroke="none" /></>,
   user: <><circle cx="12" cy="8" r="4" /><path d="M4.5 20.5c1.6-3.6 4.2-5.2 7.5-5.2s5.9 1.6 7.5 5.2" /></>,
@@ -37,6 +42,13 @@ const PATHS: Record<IconName, JSX.Element> = {
 };
 
 export function Icon({ name, size = 18, className }: { name: IconName; size?: number; className?: string }) {
+  if (FILLED[name]) {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden>
+        {FILLED[name]}
+      </svg>
+    );
+  }
   return (
     <svg
       width={size}
@@ -50,7 +62,7 @@ export function Icon({ name, size = 18, className }: { name: IconName; size?: nu
       className={className}
       aria-hidden
     >
-      {PATHS[name]}
+      {PATHS[name as Exclude<IconName, "apple" | "playStore">]}
     </svg>
   );
 }

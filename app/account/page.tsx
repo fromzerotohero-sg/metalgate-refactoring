@@ -94,7 +94,7 @@ export default function AccountPage() {
       <section className="hero-dark workspace-hero">
         <div className="workspace-hero-inner">
           <div>
-            <p className="eyebrow">{preview ? t("account.demo") : t("account.yourPlatforms")}</p>
+            <p className="eyebrow">{t("account.yourPlatforms")}</p>
             <h1>{t("account.greeting").split("{name}")[0]}<em>{displayName}</em>{t("account.greeting").split("{name}")[1]}</h1>
             <p>{t("account.greetingSub")}</p>
           </div>

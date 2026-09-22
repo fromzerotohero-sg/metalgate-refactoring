@@ -2,11 +2,13 @@
 
 import { isLocalPreview, previewHref } from "@/src/lib/preview";
 import { useT } from "@/src/lib/i18n";
+import { StoreBadges } from "./StoreBadges";
 
 export function SiteFooter() {
   const t = useT();
   const preview = isLocalPreview();
   const href = (path: string) => (preview ? previewHref(path) : path);
+
   return (
     <footer className="site-footer">
       <div className="site-footer-inner">
@@ -24,6 +26,7 @@ export function SiteFooter() {
           <a href={href("/legal/privacy")}>{t("footer.privacy")}</a>
           {preview && <a href="/preview">{t("footer.preview")}</a>}
         </nav>
+        <StoreBadges />
         <div className="footer-meta">
           <span>© {new Date().getFullYear()} {t("footer.rights")}</span>
           <span className="footer-company">Spazio Game Srls · Via Caduti sul Lavoro snc, 26029 Soncino (CR) · P.IVA IT 01625480197 · <a href="mailto:info@fromzerotohero.it">info@fromzerotohero.it</a></span>

@@ -6,6 +6,7 @@ import { SiteHeader } from "@/src/components/SiteHeader";
 import { SiteFooter } from "@/src/components/SiteFooter";
 import { PlatformCards, PlansGrid } from "@/src/components/Grids";
 import { Icon } from "@/src/components/Icon";
+import { StoreBadges } from "@/src/components/StoreBadges";
 
 export default function Home() {
   const t = useT();
@@ -24,6 +25,9 @@ export default function Home() {
             <div className="hero-actions">
               <a className="btn btn-primary" href={href("/register")}>{t("home.ctaPrimary")} <span className="arrow" aria-hidden>→</span></a>
               <a className="btn btn-ghost" href={href("/platforms")}>{t("home.ctaSecondary")}</a>
+            </div>
+            <div className="hero-store">
+              <StoreBadges />
             </div>
           </div>
           <div className="hero-art">
