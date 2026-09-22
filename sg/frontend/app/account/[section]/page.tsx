@@ -2,8 +2,8 @@
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { api, ApiError, type AuthSession, type CreditsPayload, type SessionUser, type Transaction } from "@/src/lib/api";
-import { isLocalPreview, previewCredits, previewHref, previewSessions, previewTransactions, previewUser } from "@/src/lib/preview";
+import { api, ApiError, type AuthSession, type CreditsPayload, type Invoice, type SessionUser, type Transaction } from "@/src/lib/api";
+import { isLocalPreview, previewCredits, previewHref, previewInvoices, previewSessions, previewTransactions, previewUser } from "@/src/lib/preview";
 import { useT } from "@/src/lib/i18n";
 import { SiteHeader } from "@/src/components/SiteHeader";
 import { SiteFooter } from "@/src/components/SiteFooter";
@@ -21,6 +21,10 @@ export default function AccountSectionPage() {
   const [credits, setCredits] = useState<CreditsPayload | null>(preview ? previewCredits : null);
   const [sessions, setSessions] = useState<AuthSession[]>(preview ? previewSessions : []);
   const [transactions, setTransactions] = useState<Transaction[]>(preview ? previewTransactions : []);
+  const [invoices, setInvoices] = useState<Invoice[]>(preview ? previewInvoices : []);
+  // Kept separate from "no invoices": an empty list and a failed request look the
+  // same on screen but mean opposite things to the user.
+  const [invoicesFailed, setInvoicesFailed] = useState(false);
   const [message, setMessage] = useState("");
   const [ok, setOk] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -33,7 +37,7 @@ export default function AccountSectionPage() {
     setMessage("");
     setOk(false);
     if (preview) {
-      setUser(previewUser); setCredits(previewCredits); setSessions(previewSessions); setTransactions(previewTransactions);
+      setUser(previewUser); setCredits(previewCredits); setSessions(previewSessions); setTransactions(previewTransactions); setInvoices(previewInvoices);
       setUsername(previewUser.username ?? ""); setTag(previewUser.tag ?? "");
       return;
     }
@@ -45,7 +49,15 @@ export default function AccountSectionPage() {
         setUsername(result.username ?? "");
         setTag(result.tag ?? "");
       } else if (section === "subscription") {
-        setCredits(await api.credits());
+        // Fetched together but tolerated independently: a Stripe hiccup on the
+        // invoices must not blank the plan card, which is the more important half.
+        const [planResult, invoiceResult] = await Promise.all([
+          api.credits(),
+          api.invoices().catch(() => null),
+        ]);
+        setCredits(planResult);
+        setInvoices(invoiceResult?.invoices ?? []);
+        setInvoicesFailed(invoiceResult === null);
       } else if (section === "security") {
         setSessions((await api.authSessions()).sessions ?? []);
       } else {
@@ -105,14 +117,37 @@ export default function AccountSectionPage() {
     }
   }
 
-  function openPortal() {
-    if (preview) { setOk(false); setMessage(t("section.subscription.portalDisabled")); return; }
-    api.portal(window.location.origin + "/account/subscription")
-      .then((result) => { window.location.href = result.url; })
-      .catch((error: ApiError) => setMessage(error.message || t("common.error")));
+  async function cancelSubscription() {
+    if (!plan?.current_period_end) return;
+    // Not a destructive action — the plan runs to the end of the period it was paid
+    // for — but it is not reversible from this page either, so it still asks.
+    const endsOn = dateFmt(plan.current_period_end);
+    if (!window.confirm(t("section.subscription.cancelConfirm").replace("{date}", endsOn))) return;
+    if (preview) { setOk(true); setMessage(t("section.subscription.cancelled").replace("{date}", endsOn)); return; }
+    setBusy(true);
+    setMessage("");
+    try {
+      await api.cancelSubscription();
+      // Re-read the plan rather than assuming the response: that is what flips the
+      // card from "renews on" to "ends on" and retires the button.
+      await load();
+      setOk(true);
+      setMessage(t("section.subscription.cancelled").replace("{date}", endsOn));
+    } catch {
+      setOk(false);
+      setMessage(t("section.subscription.cancelFailed"));
+    } finally {
+      setBusy(false);
+    }
   }
 
   const href = (path: string) => (preview ? previewHref(path) : path);
+  // Dates and money are formatted in the browser's own locale rather than following
+  // the app's language setting: they are a date and a currency amount, and `Intl`
+  // already knows where the user is and how they write both.
+  const dateFmt = (value?: string | null) => (value ? new Date(value).toLocaleDateString() : "—");
+  const money = (cents: number | undefined, currency = "EUR") =>
+    new Intl.NumberFormat(undefined, { style: "currency", currency }).format((cents ?? 0) / 100);
   const usage = credits?.usage;
   const plan = credits?.plan;
   const percent = typeof usage?.percent === "number" ? Math.min(100, Math.max(0, usage.percent)) : 0;
@@ -181,36 +216,95 @@ export default function AccountSectionPage() {
         )}
 
         {section === "subscription" && (
-          <div className="section-layout">
-            <article className="card">
-              <p className="eyebrow dark">{t("section.subscription.current")}</p>
-              <div className="plan-summary-top">
-                <span className="plan-name">{plan?.name ?? t("account.free")}</span>
-                {plan && plan.active !== false && !plan.cancel_at_period_end && <span className="badge-active">{t("account.active")}</span>}
-                {plan?.active === false && <span className="badge-ended">{t("section.subscription.ended")}</span>}
-              </div>
-              {plan && (
-                <>
-                  <div className="progress-track"><div className={`progress-fill ${usage?.overfilled ? "bonus" : ""}`} style={{ width: `${usage?.overfilled ? 100 : percent}%` }} /></div>
-                  <p className="progress-label">{Math.round(usage?.overfilled ? 100 : percent)}% {t("account.used")}</p>
-                  {usage?.overfilled && <div className="inline-message">{t("section.subscription.bonus")}</div>}
-                  {plan.cancel_at_period_end && <div className="inline-message">{t("section.subscription.untilEnd")}</div>}
-                  {plan.active === false && <div className="inline-message">{t("section.subscription.ended")}</div>}
-                </>
-              )}
-              <div className="card-actions">
-                <a className="btn btn-primary" href={href("/pricing")}>{t("section.subscription.viewPlans")}</a>
-              </div>
+          <>
+            <div className="section-layout">
+              <article className="card">
+                <p className="eyebrow dark">{t("section.subscription.current")}</p>
+                <div className="plan-summary-top">
+                  <span className="plan-name">{plan?.name ?? t("account.free")}</span>
+                  {plan && plan.active !== false && !plan.cancel_at_period_end && <span className="badge-active">{t("account.active")}</span>}
+                  {plan && plan.active !== false && plan.cancel_at_period_end && <span className="badge-ended">{t("section.subscription.endsTitle")}</span>}
+                  {plan?.active === false && <span className="badge-ended">{t("section.subscription.ended")}</span>}
+                </div>
+                {plan && (
+                  <>
+                    <div className="progress-track"><div className={`progress-fill ${usage?.overfilled ? "bonus" : ""}`} style={{ width: `${usage?.overfilled ? 100 : percent}%` }} /></div>
+                    <p className="progress-label">{Math.round(usage?.overfilled ? 100 : percent)}% {t("account.used")}</p>
+                    {usage?.overfilled && <div className="inline-message">{t("section.subscription.bonus")}</div>}
+                    {plan.active === false && <div className="inline-message">{t("section.subscription.ended")}</div>}
+                  </>
+                )}
+                <div className="card-actions">
+                  <a className="btn btn-primary" href={href("/pricing")}>{t("section.subscription.viewPlans")}</a>
+                </div>
+              </article>
+
+              {/*
+                * This card used to be a link out to Stripe's billing portal. It now
+                * answers the two questions someone opens this page with — when am I
+                * charged next, and how do I stop it — without a round trip to
+                * another site to find out.
+                */}
+              <article className="card">
+                <p className="eyebrow dark">{t("section.subscription.manage")}</p>
+                {plan && plan.active !== false ? (
+                  <>
+                    <h2>{plan.cancel_at_period_end ? t("section.subscription.endsTitle") : t("section.subscription.renewsTitle")}</h2>
+                    <p className="card-note">
+                      {(plan.cancel_at_period_end ? t("section.subscription.endsBody") : t("section.subscription.renewsBody")).replace("{date}", dateFmt(plan.current_period_end))}
+                    </p>
+                    {!plan.cancel_at_period_end && (
+                      <div className="card-actions">
+                        <button className="btn btn-outline" onClick={cancelSubscription} disabled={busy}>
+                          {busy ? t("section.subscription.cancelling") : t("section.subscription.cancel")}
+                        </button>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <h2>{t("section.subscription.noActiveTitle")}</h2>
+                    <p className="card-note">{t("section.subscription.noActiveBody")}</p>
+                    <div className="card-actions">
+                      <a className="btn btn-primary" href={href("/pricing")}>{t("section.subscription.viewPlans")}</a>
+                    </div>
+                  </>
+                )}
+              </article>
+            </div>
+
+            <article className="card" style={{ marginTop: 24 }}>
+              <p className="eyebrow dark">{t("section.invoices.eyebrow")}</p>
+              <h2>{t("section.invoices.title")}</h2>
+              {invoicesFailed && <div className="inline-message">{t("section.invoices.failed")}</div>}
+              {!invoicesFailed && !invoices.length && <p className="card-note">{t("section.invoices.empty")}</p>}
+              {invoices.map((invoice) => {
+                // Both URLs are signed Stripe links; prefer the hosted page, which
+                // shows the line items, over the bare PDF.
+                const document = invoice.hosted_url ?? invoice.pdf_url ?? null;
+                return (
+                  <div className="transaction-row" key={invoice.id}>
+                    <div>
+                      <strong>{invoice.number ?? invoice.description ?? t("section.invoices.title")}</strong>
+                      <small>
+                        {[
+                          invoice.created ? new Date(invoice.created).toLocaleDateString() : null,
+                          invoice.paid ? t("section.invoices.paid") : t("section.invoices.unpaid"),
+                        ].filter(Boolean).join(" · ")}
+                      </small>
+                    </div>
+                    {/* Grouped so the amount keeps the right edge the Activity list gives it. */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                      <span className="transaction-amount positive">{money(invoice.amount_paid ?? invoice.amount_due, invoice.currency)}</span>
+                      {document && (
+                        <a className="text-button" href={document} target="_blank" rel="noopener noreferrer">{t("section.invoices.open")}</a>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </article>
-            <article className="card">
-              <p className="eyebrow dark">{t("section.subscription.manage")}</p>
-              <h2>{t("section.subscription.manageTitle")}</h2>
-              <p className="card-note">{t("section.subscription.manageDesc")}</p>
-              <div className="card-actions">
-                <button className="btn btn-outline" onClick={openPortal}>{t("section.subscription.openPortal")} →</button>
-              </div>
-            </article>
-          </div>
+          </>
         )}
 
         {section === "security" && (

@@ -155,6 +155,139 @@ def create_portal_session(user: dict, return_url: str) -> dict:
     return {"url": session.url}
 
 
+# ── Self-serve billing (cancellation and invoices) ──────────────────────────
+
+def _live_subscription(user_id: str) -> dict | None:
+    """
+    The user's live Stripe subscription, or ``None``.
+
+    The recorded id is tried first, then the customer's subscriptions are listed.
+    The local row is only a *mirror* kept by webhooks, and this runs while a user is
+    looking at the page expecting it to be true — so it must not depend on a webhook
+    having arrived.
+    """
+    stripe = configure_stripe()
+    rows = (
+        db.require_client()
+        .table("subscriptions")
+        .select("stripe_subscription_id")
+        .eq("user_id", user_id)
+        .limit(1)
+        .execute()
+    ).data
+    recorded = (rows[0] if rows else {}).get("stripe_subscription_id")
+
+    if recorded:
+        try:
+            subscription = stripe.Subscription.retrieve(recorded)
+            if subscription.get("status") not in DEAD_SUBSCRIPTION_STATUSES:
+                return subscription
+        except stripe.error.InvalidRequestError as exc:
+            # A stale id — cancelled elsewhere, or minted in the other Stripe mode.
+            # The customer lookup below is the authority; this is just a shortcut.
+            logger.info("Recorded subscription %s is not retrievable: %s", recorded, exc)
+
+    accounts = (
+        db.require_client()
+        .table("users")
+        .select("stripe_customer_id")
+        .eq("id", user_id)
+        .limit(1)
+        .execute()
+    ).data
+    customer_id = (accounts[0] if accounts else {}).get("stripe_customer_id")
+    if not customer_id:
+        return None
+
+    for subscription in stripe.Subscription.list(
+        customer=customer_id, status="all", limit=100
+    ).data:
+        if subscription.get("status") not in DEAD_SUBSCRIPTION_STATUSES:
+            return subscription
+    return None
+
+
+def set_subscription_cancellation(user_id: str, *, cancel: bool) -> dict:
+    """
+    Ask Stripe to stop — or resume — billing at the end of the current period.
+
+    Deliberately *at period end*, never immediately. The user has already paid for
+    the period they are in, so cutting it short withdraws something bought and turns
+    a cancellation into a refund question. Stripe simply stops charging, and access
+    lapses on its own — which is what the date on the page is there to say.
+
+    The local mirror is rewritten from the subscription Stripe returns, rather than
+    waiting for `customer.subscription.updated`. That webhook is the normal path,
+    but it is not the thing the user is looking at, and a card that has in fact
+    stopped being charged while the page still reads "Active" is a bug report.
+    """
+    subscription = _live_subscription(user_id)
+    if not subscription:
+        raise LookupError("no live subscription")
+
+    updated = configure_stripe().Subscription.modify(
+        subscription["id"], cancel_at_period_end=cancel
+    )
+    upsert_subscription(user_id, updated)
+    logger.info(
+        "User %s %s subscription %s",
+        user_id,
+        "cancelled" if cancel else "resumed",
+        subscription["id"],
+    )
+    return updated
+
+
+def list_invoices(user_id: str, *, limit: int = 24) -> list[dict]:
+    """
+    The user's invoices, read from Stripe.
+
+    From Stripe rather than the local `transactions` table because an invoice is a
+    *document*: it has a number, a status, and a hosted copy the user may need to
+    open or download. `transactions` records credits moving, which is a different
+    thing, and carries neither a payable amount nor a PDF.
+
+    No customer is created. A user who has never subscribed simply has no invoices,
+    and inventing a Stripe customer to discover that would fill the account with
+    empties.
+    """
+    accounts = (
+        db.require_client()
+        .table("users")
+        .select("stripe_customer_id")
+        .eq("id", user_id)
+        .limit(1)
+        .execute()
+    ).data
+    customer_id = (accounts[0] if accounts else {}).get("stripe_customer_id")
+    if not customer_id:
+        return []
+
+    invoices = configure_stripe().Invoice.list(customer=customer_id, limit=limit)
+    return [_invoice_summary(invoice) for invoice in invoices.data]
+
+
+def _invoice_summary(invoice: dict) -> dict:
+    """Exactly the fields the billing page renders, and no more."""
+    return {
+        "id": invoice.get("id"),
+        "number": invoice.get("number"),
+        "created": _ts(invoice.get("created")),
+        "status": invoice.get("status"),
+        "paid": bool(invoice.get("paid")),
+        "amount_due": invoice.get("amount_due"),
+        "amount_paid": invoice.get("amount_paid"),
+        "currency": (invoice.get("currency") or "eur").upper(),
+        "description": invoice.get("description"),
+        "period_start": _ts(invoice.get("period_start")),
+        "period_end": _ts(invoice.get("period_end")),
+        # Passed through per request rather than stored: both are signed Stripe URLs
+        # with their own lifetime, and a cached copy would rot.
+        "hosted_url": invoice.get("hosted_invoice_url"),
+        "pdf_url": invoice.get("invoice_pdf"),
+    }
+
+
 # ── Cancellation, for account deletion ──────────────────────────────────────
 
 # Statuses that no longer bill anything. Every other status — including

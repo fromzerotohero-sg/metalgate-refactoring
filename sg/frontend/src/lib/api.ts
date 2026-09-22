@@ -81,6 +81,28 @@ export type Transaction = {
 
 export type AuthSession = { id: string; current?: boolean; service?: string; user_agent?: string; last_seen_at?: string; created_at?: string };
 
+/**
+ * A Stripe invoice.
+ *
+ * `hosted_url` and `pdf_url` are signed Stripe URLs with their own lifetime, issued
+ * per request — never cache them, and treat a missing one as "no document yet".
+ */
+export type Invoice = {
+  id: string;
+  number?: string | null;
+  created?: string | null;
+  status?: string | null;
+  paid?: boolean;
+  amount_due?: number;
+  amount_paid?: number;
+  currency?: string;
+  description?: string | null;
+  period_start?: string | null;
+  period_end?: string | null;
+  hosted_url?: string | null;
+  pdf_url?: string | null;
+};
+
 export type ApiErrorPayload = { error?: string; message?: string; requires_verification?: boolean; reason?: string };
 
 export class ApiError extends Error {
@@ -120,7 +142,10 @@ export const api = {
   verifyResetCode: (body: { email: string; code: string }) => request<{ reset_token?: string }>("/sso/verify-reset-code", json(body)),
   resetPassword: (body: { token: string; password: string }) => request<{ message: string }>("/sso/reset-password", json(body)),
   subscribe: (plan_id: string) => request<{ session_id: string; url: string }>("/stripe/subscribe", json({ plan_id })),
-  portal: (return_url?: string) => request<{ url: string }>("/stripe/portal", json(return_url ? { return_url } : {}))
+  portal: (return_url?: string) => request<{ url: string }>("/stripe/portal", json(return_url ? { return_url } : {})),
+  // Cancels at the end of the paid period, not immediately: see the route.
+  cancelSubscription: () => request<{ message: string }>("/stripe/cancel", json({ cancel: true })),
+  invoices: () => request<{ invoices: Invoice[] }>("/stripe/invoices")
 };
 
 /**

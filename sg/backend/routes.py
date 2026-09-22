@@ -781,6 +781,57 @@ def create_billing_portal():
         return jsonify({"error": "Failed to open the billing portal"}), 500
 
 
+@bp.route("/stripe/cancel", methods=["POST"])
+@limiter.limit("10 per minute")
+@auth.require_session
+def cancel_subscription():
+    """
+    Stop — or resume — billing at the end of the current period.
+
+    At period end, not immediately: the period the user is in has already been paid
+    for, so ending it early would withdraw something they bought and make this a
+    refund question. Stripe stops charging, and access lapses on its own.
+
+    `cancel: false` resumes, which is the same Stripe call with the flag cleared. The
+    UI only offers cancellation today; the endpoint supports the other direction so
+    that offering it is not a new endpoint, a new deploy and a new review.
+    """
+    if not current_app.config["STRIPE_SECRET_KEY"]:
+        return jsonify({"error": "Billing is not configured"}), 503
+
+    data = request.get_json(silent=True) or {}
+    cancel = data.get("cancel")
+    if not isinstance(cancel, bool):
+        cancel = True
+
+    try:
+        billing.set_subscription_cancellation(g.user["id"], cancel=cancel)
+    except LookupError:
+        return jsonify({"error": "There is no active subscription"}), 404
+    except Exception as exc:
+        logger.error("Could not change the subscription for %s: %s", g.user["id"], exc)
+        return jsonify({"error": "Could not update the subscription"}), 500
+
+    return jsonify({"message": "Subscription updated"}), 200
+
+
+@bp.route("/stripe/invoices", methods=["GET"])
+@limiter.limit("30 per minute")
+@auth.require_session
+def get_invoices():
+    """The signed-in user's invoices, newest first, straight from Stripe."""
+    # An empty list rather than a 503 when billing is unconfigured: the billing page
+    # should still render its other cards, and there is nothing to show either way.
+    if not current_app.config["STRIPE_SECRET_KEY"]:
+        return jsonify({"invoices": []}), 200
+
+    try:
+        return jsonify({"invoices": billing.list_invoices(g.user["id"])}), 200
+    except Exception as exc:
+        logger.error("Could not list invoices for %s: %s", g.user["id"], exc)
+        return jsonify({"error": "Could not load your invoices"}), 500
+
+
 @bp.route("/stripe/webhook", methods=["POST"])
 def stripe_webhook():
     """

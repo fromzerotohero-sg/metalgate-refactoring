@@ -1,4 +1,4 @@
-import type { AuthSession, CreditsPayload, Plan, SessionUser, Transaction } from "./api";
+import type { AuthSession, CreditsPayload, Invoice, Plan, SessionUser, Transaction } from "./api";
 
 export const previewUser: SessionUser = { id: "preview-user", email: "marco.rossi@preview.local", username: "marco", tag: "0427", email_verified: true };
 
@@ -24,6 +24,11 @@ export const previewTransactions: Transaction[] = [
 export const previewSessions: AuthSession[] = [
   { id: "session-current", current: true, service: "web", user_agent: "Chrome · Windows", last_seen_at: "2026-09-21T09:14:00+00:00" },
   { id: "session-mobile", current: false, service: "mobile", user_agent: "Safari · iPhone", last_seen_at: "2026-09-20T21:40:00+00:00" }
+];
+
+export const previewInvoices: Invoice[] = [
+  { id: "in_preview_2", number: "SG-0002", created: "2026-09-17T09:12:00Z", status: "paid", paid: true, amount_paid: 1499, amount_due: 1499, currency: "EUR", period_start: "2026-09-17T09:00:00Z", period_end: "2026-10-17T09:00:00Z", hosted_url: null, pdf_url: null },
+  { id: "in_preview_1", number: "SG-0001", created: "2026-08-17T09:12:00Z", status: "paid", paid: true, amount_paid: 1499, amount_due: 1499, currency: "EUR", period_start: "2026-08-17T09:00:00Z", period_end: "2026-09-17T09:00:00Z", hosted_url: null, pdf_url: null }
 ];
 
 export function isLocalPreview() {
