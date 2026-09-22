@@ -9,7 +9,12 @@ const manrope = Manrope({ subsets: ["latin"], variable: "--font-app", display: "
 
 export const metadata: Metadata = {
   title: "From Zero To Hero | Un solo accesso, tutto il tuo ecosistema",
-  description: "Il punto di ingresso centrale per le piattaforme From Zero To Hero."
+  description: "Il punto di ingresso centrale per le piattaforme From Zero To Hero.",
+  icons: {
+    icon: [{ url: "/logo.webp", type: "image/webp" }],
+    shortcut: [{ url: "/logo.webp", type: "image/webp" }],
+    apple: [{ url: "/logo.webp", type: "image/webp" }]
+  }
 };
 
 export const viewport = { themeColor: "#081232" };
