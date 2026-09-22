@@ -125,6 +125,13 @@ def create_subscription_checkout(user: dict, plan_id: str) -> dict:
         customer=customer_id,
         line_items=[{"price": price_id, "quantity": 1}],
         automatic_tax={"enabled": True},
+        # Stripe Tax needs a location to tax by, and the Customer we create has
+        # none. Without this Stripe rejects the entire session with
+        # `customer_tax_location_invalid`, so checkout failed for *every* user, not
+        # just the first. `auto` writes the billing address the payer enters in
+        # Checkout back onto the Customer, which satisfies the tax lookup here and
+        # means later invoices are taxed from the same address.
+        customer_update={"address": "auto"},
         client_reference_id=str(user["id"]),
         success_url=cfg["CHECKOUT_SUCCESS_URL"],
         cancel_url=cfg["CHECKOUT_CANCEL_URL"],

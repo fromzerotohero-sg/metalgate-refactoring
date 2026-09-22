@@ -440,7 +440,12 @@ class Config:
                     "SG_ADMIN_IP_ALLOWLIST is unset: the admin API is reachable from "
                     "any address. Strongly recommended when the operator's IP is stable."
                 )
-            if len(cls.CORS_ORIGINS) == len(_DEFAULT_CORS_ORIGINS):
+            # Compared as *sets*. A length comparison stood here, and a real allowlist
+            # that happened to have the same number of entries as the defaults tripped
+            # it — logging a misconfiguration error for a correctly configured
+            # deployment, which is worse than no check at all: it trains you to ignore
+            # the line that would announce the genuine problem.
+            if set(cls.CORS_ORIGINS) == set(_DEFAULT_CORS_ORIGINS):
                 # The defaults include http://localhost, which is not a production
                 # frontend. CORS with credentials against an unset allowlist is a
                 # silent misconfiguration, not a working default.
