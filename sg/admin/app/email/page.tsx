@@ -1,7 +1,6 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
   AdminApiError,
@@ -20,19 +19,20 @@ import Badge, { VerifiedBadge, type BadgeTone } from "@/src/components/admin/bad
 import { useToast } from "@/src/components/admin/toast";
 
 const PREVIEW_DEBOUNCE_MS = 500;
+const RENDER_DEBOUNCE_MS = 800;
 
-type Preset = { id: string; label: string; filters: CampaignFilters };
+type Preset = { id: string; label: string; description: string; filters: CampaignFilters };
 
 const PRESETS: Preset[] = [
-  { id: "tutti", label: "Tutti", filters: {} },
-  { id: "verificati", label: "Verificati", filters: { verified_status: "verified" } },
-  { id: "non_verificati", label: "Non verificati", filters: { verified_status: "unverified" } },
-  { id: "attivi_30", label: "Attivi 30gg", filters: { active_within_days: 30 } },
-  { id: "inattivi_30", label: "Inattivi >30gg", filters: { inactive_days_over: 30 } },
-  { id: "con_crediti", label: "Con crediti", filters: { min_credits: 1 } },
-  { id: "ref_streamer", label: "Referral streamer", filters: { referral_type: "streamer" } },
-  { id: "ref_utenti", label: "Referral utenti", filters: { referral_type: "user" } },
-  { id: "senza_ref", label: "Senza referral", filters: { referral_type: "none" } }
+  { id: "tutti", label: "Tutti gli iscritti", description: "Ogni utente registrato a SilverGate.", filters: {} },
+  { id: "verificati", label: "Email verificate", description: "Solo chi ha confermato il proprio indirizzo.", filters: { verified_status: "verified" } },
+  { id: "non_verificati", label: "Email non verificate", description: "Chi non ha ancora confermato l'indirizzo.", filters: { verified_status: "unverified" } },
+  { id: "attivi_30", label: "Attivi di recente", description: "Chi è entrato negli ultimi 30 giorni.", filters: { active_within_days: 30 } },
+  { id: "inattivi_30", label: "Inattivi >30gg", description: "Chi non entra da più di un mese.", filters: { inactive_days_over: 30 } },
+  { id: "con_crediti", label: "Con crediti", description: "Chi ha ancora crediti da spendere.", filters: { min_credits: 1 } },
+  { id: "ref_streamer", label: "Arrivati da streamer", description: "Iscritti tramite il referral di uno streamer.", filters: { referral_type: "streamer" } },
+  { id: "ref_utenti", label: "Arrivati da amici", description: "Iscritti tramite il referral di un altro utente.", filters: { referral_type: "user" } },
+  { id: "senza_ref", label: "Senza referral", description: "Iscritti da soli, senza codice referral.", filters: { referral_type: "none" } }
 ];
 
 const MODE_LABELS: Record<EmailCampaignHistoryItem["mode"], string> = {
@@ -89,9 +89,18 @@ const HISTORY_COLUMNS: ColumnDef<EmailCampaignHistoryItem, unknown>[] = [
   }
 ];
 
-function orUndefined(value: string): string | undefined {
-  const trimmed = value.trim();
-  return trimmed ? trimmed : undefined;
+function StepHeader({ number, title, subtitle }: { number: string; title: string; subtitle?: string }) {
+  return (
+    <div className="mb-5 flex items-start gap-3.5">
+      <span className="grid h-9 w-9 flex-none place-items-center rounded-full bg-brand text-base font-extrabold text-white">
+        {number}
+      </span>
+      <div>
+        <h2 className="text-lg font-extrabold text-ink" style={{ marginBottom: 0 }}>{title}</h2>
+        {subtitle && <p className="admin-muted mt-0.5">{subtitle}</p>}
+      </div>
+    </div>
+  );
 }
 
 function Dialog({
@@ -128,9 +137,8 @@ function EmailPageInner() {
   const historyPerPage = Math.max(1, parseInt(searchParams.get("per_page") ?? "10", 10) || 10);
   const historyQuery: DataTableQuery = { page: historyPage, perPage: historyPerPage };
 
-  // ── Destinatari ──────────────────────────────────────────────────
+  // ── 1. Destinatari ───────────────────────────────────────────────
   const [presetId, setPresetId] = useState("tutti");
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [advSearch, setAdvSearch] = useState("");
   const [advMinCredits, setAdvMinCredits] = useState("");
   const [advCreatedWithin, setAdvCreatedWithin] = useState("");
@@ -155,18 +163,25 @@ function EmailPageInner() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const previewDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Contenuto ────────────────────────────────────────────────────
+  // ── 2. Contenuto ─────────────────────────────────────────────────
   const [subject, setSubject] = useState("");
-  const [heading, setHeading] = useState("");
-  const [introText, setIntroText] = useState("");
   const [bodyText, setBodyText] = useState("");
+  const [ctaEnabled, setCtaEnabled] = useState(false);
   const [ctaText, setCtaText] = useState("");
   const [ctaUrl, setCtaUrl] = useState("");
-  const [footerNote, setFooterNote] = useState("");
-  const [bannerImage, setBannerImage] = useState("");
-  const [logoImage, setLogoImage] = useState("");
 
-  // ── Invio ────────────────────────────────────────────────────────
+  const hasCta = ctaEnabled && Boolean(ctaText.trim()) && Boolean(ctaUrl.trim());
+  const hasContent = Boolean(subject.trim() || bodyText.trim());
+
+  // ── Anteprima live ───────────────────────────────────────────────
+  const [renderHtml, setRenderHtml] = useState<string | null>(null);
+  const [renderLoading, setRenderLoading] = useState(false);
+  const [renderError, setRenderError] = useState<string | null>(null);
+  const [renderUnavailable, setRenderUnavailable] = useState(false);
+  const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
+  const renderDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── 3. Invio ─────────────────────────────────────────────────────
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [testOpen, setTestOpen] = useState(false);
   const [testAddress, setTestAddress] = useState("");
@@ -181,7 +196,7 @@ function EmailPageInner() {
     if (previewDebounce.current) clearTimeout(previewDebounce.current);
     previewDebounce.current = setTimeout(() => {
       adminApi
-        .emailPreview({ filters, banner_image: orUndefined(bannerImage), logo_image: orUndefined(logoImage) })
+        .emailPreview({ filters })
         .then((res) => {
           setPreview(res);
           setPreviewError(null);
@@ -197,27 +212,53 @@ function EmailPageInner() {
     };
     // filtersKey è la serializzazione stabile di `filters`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtersKey, bannerImage, logoImage, singleMode]);
+  }, [filtersKey, singleMode]);
+
+  useEffect(() => {
+    if (renderUnavailable || !hasContent) return;
+    setRenderLoading(true);
+    if (renderDebounce.current) clearTimeout(renderDebounce.current);
+    renderDebounce.current = setTimeout(() => {
+      adminApi
+        .emailRender({
+          subject: subject.trim() || "(Senza oggetto)",
+          body_text: bodyText.trim(),
+          ...(hasCta ? { cta_text: ctaText.trim(), cta_url: ctaUrl.trim() } : {})
+        })
+        .then((res) => {
+          setRenderHtml(res.html);
+          setRenderError(null);
+        })
+        .catch((err) => {
+          // Endpoint non ancora deployato: nascondi l'anteprima live, la pagina
+          // continua a funzionare senza.
+          if (err instanceof AdminApiError && err.status === 404) {
+            setRenderUnavailable(true);
+          } else {
+            setRenderError(err.message ?? "Anteprima non aggiornata");
+          }
+        })
+        .finally(() => setRenderLoading(false));
+    }, RENDER_DEBOUNCE_MS);
+    return () => {
+      if (renderDebounce.current) clearTimeout(renderDebounce.current);
+    };
+  }, [subject, bodyText, hasCta, ctaText, ctaUrl, renderUnavailable, hasContent]);
 
   const recipientsCount = singleMode ? 1 : (preview?.recipients_count ?? null);
-  const hasBody = Boolean(introText.trim() || bodyText.trim());
-  const canSend = Boolean(subject.trim()) && hasBody && !sending && (singleMode || (recipientsCount ?? 0) > 0);
+  const canSend = Boolean(subject.trim()) && Boolean(bodyText.trim()) && !sending && (singleMode || (recipientsCount ?? 0) > 0);
 
+  // Il titolo interno non si chiede più: il backend usa l'oggetto come heading
+  // e il piè di pagina standard quando i campi non arrivano.
   const buildPayload = useCallback(
     (extra: Partial<EmailSendPayload>): EmailSendPayload => ({
       subject: subject.trim(),
-      heading: orUndefined(heading),
-      intro_text: orUndefined(introText),
-      body_text: orUndefined(bodyText),
-      footer_note: orUndefined(footerNote),
-      cta_text: orUndefined(ctaText),
-      cta_url: orUndefined(ctaUrl),
-      banner_image: orUndefined(bannerImage),
-      logo_image: orUndefined(logoImage),
+      body_text: bodyText.trim(),
+      ...(hasCta ? { cta_text: ctaText.trim(), cta_url: ctaUrl.trim() } : {}),
       ...(singleMode ? { recipient_emails: [singleTo] } : { filters }),
       ...extra
     }),
-    [subject, heading, introText, bodyText, footerNote, ctaText, ctaUrl, bannerImage, logoImage, singleMode, singleTo, filters]
+    [subject, bodyText, hasCta, ctaText, ctaUrl, singleMode, singleTo, filters]
   );
 
   const sendTest = async () => {
@@ -286,52 +327,94 @@ function EmailPageInner() {
       .finally(() => setHistoryLoading(false));
   }, [historyPage, historyPerPage, historyReload]);
 
+  const previewBody = (
+    <>
+      {renderUnavailable ? (
+        <p className="admin-muted px-1 py-6 text-center">
+          Anteprima live non ancora attiva sul server — l&apos;invio funziona comunque.
+        </p>
+      ) : !hasContent ? (
+        <p className="admin-muted px-1 py-10 text-center">Scrivi oggetto e messaggio per vedere l&apos;anteprima.</p>
+      ) : (
+        <div className="overflow-hidden rounded-2xl border border-line bg-white shadow-sm">
+          <div className="border-b border-line bg-surface px-4 py-3">
+            <p className="truncate text-sm font-bold text-ink">{subject.trim() || "(Senza oggetto)"}</p>
+            <p className="text-xs text-muted">Da: SilverGate</p>
+          </div>
+          <div className="relative">
+            {renderHtml ? (
+              <iframe
+                title="Anteprima dell'email"
+                sandbox=""
+                srcDoc={renderHtml}
+                className="h-[560px] w-full bg-white"
+              />
+            ) : (
+              <div className="flex h-[560px] flex-col gap-3 p-5">
+                <div className="h-10 w-2/3 animate-pulse rounded-lg bg-surface" />
+                <div className="h-4 w-full animate-pulse rounded bg-surface" />
+                <div className="h-4 w-full animate-pulse rounded bg-surface" />
+                <div className="h-4 w-4/5 animate-pulse rounded bg-surface" />
+                <div className="h-4 w-3/5 animate-pulse rounded bg-surface" />
+              </div>
+            )}
+            {renderLoading && renderHtml && (
+              <div className="absolute inset-x-0 top-0 h-1 animate-pulse bg-brand/40" />
+            )}
+          </div>
+          {renderError && <p className="admin-muted px-4 py-2">Anteprima non aggiornata: {renderError}</p>}
+        </div>
+      )}
+    </>
+  );
+
   return (
     <div className="admin-page">
-      <h1 className="admin-title">Email</h1>
+      <div>
+        <h1 className="admin-title">Nuova email</h1>
+        <p className="admin-muted mt-1">Tre passaggi: scegli a chi scrivere, scrivi il messaggio, invia.</p>
+      </div>
 
       {singleMode && (
         <section className="admin-card">
-          <h2>Destinatario</h2>
+          <StepHeader number="1" title="A chi scrivi?" />
           <p className="text-sm text-ink">
             A: <strong>{singleTo}</strong>
           </p>
-          <p className="admin-muted mt-1">Invio singolo: i filtri sui segmenti non si applicano.</p>
+          <p className="admin-muted mt-1">Invio singolo: i segmenti non si applicano.</p>
         </section>
       )}
 
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid items-start gap-5 lg:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(340px,26rem)]">
         {!singleMode && (
           <section className="admin-card">
-            <h2>Destinatari</h2>
+            <StepHeader number="1" title="A chi scrivi?" subtitle="Scegli un gruppo di utenti." />
 
-            <div className="mb-4 flex flex-wrap gap-2">
-              {PRESETS.map((preset) => (
-                <button
-                  key={preset.id}
-                  type="button"
-                  onClick={() => setPresetId(preset.id)}
-                  className={
-                    presetId === preset.id
-                      ? "rounded-full border border-brand bg-brand px-3.5 py-1.5 text-xs font-bold text-white"
-                      : "rounded-full border border-line bg-white px-3.5 py-1.5 text-xs font-semibold text-ink transition-colors hover:border-brand hover:text-brand"
-                  }
-                >
-                  {preset.label}
-                </button>
-              ))}
+            <div className="mb-4 grid gap-2.5 sm:grid-cols-2">
+              {PRESETS.map((preset) => {
+                const selected = presetId === preset.id;
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => setPresetId(preset.id)}
+                    aria-pressed={selected}
+                    className={
+                      selected
+                        ? "rounded-xl border-2 border-brand bg-blue-50 px-4 py-3 text-left shadow-sm"
+                        : "rounded-xl border-2 border-line bg-white px-4 py-3 text-left transition-colors hover:border-brand/50"
+                    }
+                  >
+                    <span className={`block text-sm font-bold ${selected ? "text-brand" : "text-ink"}`}>{preset.label}</span>
+                    <span className="mt-0.5 block text-xs leading-snug text-muted">{preset.description}</span>
+                  </button>
+                );
+              })}
             </div>
 
-            <button
-              type="button"
-              className="mb-4 text-sm font-semibold text-brand underline"
-              onClick={() => setShowAdvanced((open) => !open)}
-            >
-              {showAdvanced ? "Nascondi filtri avanzati ↑" : "Filtri avanzati ↓"}
-            </button>
-
-            {showAdvanced && (
-              <div className="mb-4 grid gap-3 sm:grid-cols-2">
+            <details className="mb-4 rounded-xl border border-line bg-surface px-4 py-3">
+              <summary className="cursor-pointer text-sm font-semibold text-brand">Filtri avanzati</summary>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 <label className="field">
                   <span className="field-label">Cerca (username o email)</span>
                   <span className="field-input">
@@ -357,23 +440,24 @@ function EmailPageInner() {
                   </span>
                 </label>
               </div>
-            )}
+            </details>
 
             <div className="rounded-xl border border-line bg-surface p-4">
               {previewError ? (
                 <p className="admin-error">{previewError}</p>
               ) : (
                 <>
-                  <p className="text-sm font-semibold text-ink">
-                    {previewLoading && !preview
-                      ? "Calcolo destinatari…"
-                      : `${formatNumber(preview?.recipients_count ?? 0)} destinatari`}
-                    {previewLoading && preview ? " (aggiornamento…)" : ""}
-                  </p>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-4xl font-extrabold tracking-tight text-ink">
+                      {previewLoading && !preview ? "…" : formatNumber(preview?.recipients_count ?? 0)}
+                    </span>
+                    <span className="text-sm font-bold text-muted">
+                      destinatari{previewLoading && preview ? " (aggiornamento…)" : ""}
+                    </span>
+                  </div>
                   {preview && (
                     <p className="admin-muted mt-1">
-                      {formatNumber(preview.verified_count)} verificati · {formatNumber(preview.unverified_count)} non verificati ·{" "}
-                      {formatNumber(preview.active_30d_count)} attivi 30gg · {formatNumber(preview.inactive_30d_count)} inattivi
+                      {formatNumber(preview.verified_count)} verificati · {formatNumber(preview.unverified_count)} non verificati
                     </p>
                   )}
                   {preview && preview.recipients_preview.length > 0 && (
@@ -383,7 +467,7 @@ function EmailPageInner() {
                         className="text-sm font-semibold text-brand underline"
                         onClick={() => setPreviewOpen((open) => !open)}
                       >
-                        {previewOpen ? "Nascondi anteprima ↑" : `Mostra i primi ${preview.recipients_preview.length} destinatari ↓`}
+                        {previewOpen ? "Nascondi la lista ↑" : `Vedi i primi ${preview.recipients_preview.length} destinatari ↓`}
                       </button>
                       {previewOpen && (
                         <ul className="mt-2 flex max-h-64 flex-col gap-2 overflow-y-auto">
@@ -403,78 +487,9 @@ function EmailPageInner() {
                 </>
               )}
             </div>
-          </section>
-        )}
-
-        <section className="admin-card">
-          <h2>Contenuto</h2>
-          <div className="flex flex-col gap-4">
-            <label className="field">
-              <span className="field-label">Oggetto *</span>
-              <span className="field-input">
-                <input type="text" value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Oggetto dell'email" />
-              </span>
-            </label>
-            <label className="field">
-              <span className="field-label">Titolo interno</span>
-              <span className="field-input">
-                <input type="text" value={heading} onChange={(e) => setHeading(e.target.value)} placeholder="Se vuoto, usa l'oggetto" />
-              </span>
-            </label>
-            <label className="field">
-              <span className="field-label">Testo introduttivo</span>
-              <textarea
-                className="w-full rounded-xl border border-line bg-white px-4 py-3 text-sm text-ink focus:border-brand focus:outline-none"
-                rows={2}
-                value={introText}
-                onChange={(e) => setIntroText(e.target.value)}
-              />
-            </label>
-            <label className="field">
-              <span className="field-label">Corpo</span>
-              <textarea
-                className="w-full rounded-xl border border-line bg-white px-4 py-3 text-sm text-ink focus:border-brand focus:outline-none"
-                rows={5}
-                value={bodyText}
-                onChange={(e) => setBodyText(e.target.value)}
-              />
-            </label>
-            {!hasBody && <p className="admin-muted">Serve almeno un testo introduttivo o un corpo.</p>}
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="field">
-                <span className="field-label">Testo pulsante (CTA)</span>
-                <span className="field-input">
-                  <input type="text" value={ctaText} onChange={(e) => setCtaText(e.target.value)} placeholder="Es. Scopri di più" />
-                </span>
-              </label>
-              <label className="field">
-                <span className="field-label">URL pulsante</span>
-                <span className="field-input">
-                  <input type="url" value={ctaUrl} onChange={(e) => setCtaUrl(e.target.value)} placeholder="https://…" />
-                </span>
-              </label>
-            </div>
-            <label className="field">
-              <span className="field-label">Nota a piè di pagina</span>
-              <span className="field-input">
-                <input type="text" value={footerNote} onChange={(e) => setFooterNote(e.target.value)} placeholder="Messaggio interno SilverGate." />
-              </span>
-            </label>
-            <label className="field">
-              <span className="field-label">URL immagine banner</span>
-              <span className="field-input">
-                <input type="url" value={bannerImage} onChange={(e) => setBannerImage(e.target.value)} placeholder="https://… (solo URL hostati)" />
-              </span>
-            </label>
-            <label className="field">
-              <span className="field-label">URL logo</span>
-              <span className="field-input">
-                <input type="url" value={logoImage} onChange={(e) => setLogoImage(e.target.value)} placeholder="https://… (solo URL hostati)" />
-              </span>
-            </label>
 
             {preview && preview.warnings.length > 0 && (
-              <ul className="flex flex-col gap-1">
+              <ul className="mt-3 flex flex-col gap-1">
                 {preview.warnings.map((warning) => (
                   <li key={warning} className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
                     {warning}
@@ -482,10 +497,87 @@ function EmailPageInner() {
                 ))}
               </ul>
             )}
+          </section>
+        )}
 
-            <div className="flex flex-wrap gap-3 pt-2">
-              <button type="button" className="btn btn-outline" disabled={!subject.trim() || sending} onClick={() => setTestOpen(true)}>
-                Invia email di test
+        <div className="flex flex-col gap-5">
+          <section className="admin-card">
+            <StepHeader number="2" title="Cosa dici?" subtitle="Il logo e la grafica SilverGate sono già nel template — scrivi solo il testo." />
+
+            <div className="flex flex-col gap-4">
+              <label className="field">
+                <span className="field-label">Oggetto *</span>
+                <span className="field-input">
+                  <input type="text" value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Es. Torna in gioco: ti aspetta una sorpresa" />
+                </span>
+              </label>
+              <label className="field">
+                <span className="field-label">Messaggio *</span>
+                <textarea
+                  className="w-full rounded-xl border border-line bg-white px-4 py-3 text-sm leading-relaxed text-ink focus:border-brand focus:outline-none"
+                  rows={9}
+                  value={bodyText}
+                  onChange={(e) => setBodyText(e.target.value)}
+                  placeholder="Scrivi qui il testo dell'email, come se parlassi a un cliente…"
+                />
+              </label>
+
+              {!ctaEnabled ? (
+                <button
+                  type="button"
+                  className="self-start text-sm font-semibold text-brand underline"
+                  onClick={() => setCtaEnabled(true)}
+                >
+                  + Aggiungi un pulsante
+                </button>
+              ) : (
+                <div className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-4">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="field">
+                      <span className="field-label">Testo del pulsante</span>
+                      <span className="field-input">
+                        <input type="text" value={ctaText} onChange={(e) => setCtaText(e.target.value)} placeholder="Es. Scopri di più" />
+                      </span>
+                    </label>
+                    <label className="field">
+                      <span className="field-label">Link del pulsante</span>
+                      <span className="field-input">
+                        <input type="url" value={ctaUrl} onChange={(e) => setCtaUrl(e.target.value)} placeholder="https://…" />
+                      </span>
+                    </label>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="admin-muted">
+                      {hasCta ? "Il pulsante comparirà in fondo all'email." : "Servono sia il testo sia il link."}
+                    </p>
+                    <button
+                      type="button"
+                      className="flex-none text-sm font-semibold text-muted underline hover:text-ink"
+                      onClick={() => {
+                        setCtaEnabled(false);
+                        setCtaText("");
+                        setCtaUrl("");
+                      }}
+                    >
+                      Rimuovi
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
+
+          <section className="admin-card">
+            <StepHeader number="3" title="Invia" subtitle="Prima una prova a te, poi a tutti." />
+
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                className="btn btn-outline"
+                disabled={!subject.trim() || !bodyText.trim() || sending}
+                onClick={() => setTestOpen(true)}
+              >
+                Invia prima a me
               </button>
               <button
                 type="button"
@@ -493,10 +585,33 @@ function EmailPageInner() {
                 disabled={!canSend}
                 onClick={() => setConfirmOpen(true)}
               >
-                {sending ? "Invio in corso…" : singleMode ? "Invia email" : "Invia campagna"}
+                {sending
+                  ? "Invio in corso…"
+                  : `Invia a ${formatNumber(recipientsCount ?? 0)} destinatari`}
               </button>
             </div>
+            {!canSend && !sending && (
+              <p className="admin-muted mt-3">
+                {!subject.trim() || !bodyText.trim()
+                  ? "Per inviare servono oggetto e messaggio."
+                  : "Nessun destinatario in questo gruppo."}
+              </p>
+            )}
+          </section>
+        </div>
+
+        <section className="admin-card lg:col-span-2 xl:col-span-1">
+          <div className="mb-5 flex items-center justify-between gap-3">
+            <h2 className="text-lg font-extrabold text-ink" style={{ marginBottom: 0 }}>Così la vedono i clienti</h2>
+            <button
+              type="button"
+              className="text-sm font-semibold text-brand underline xl:hidden"
+              onClick={() => setMobilePreviewOpen((open) => !open)}
+            >
+              {mobilePreviewOpen ? "Nascondi anteprima ↑" : "Mostra anteprima ↓"}
+            </button>
           </div>
+          <div className={`${mobilePreviewOpen ? "" : "hidden "}xl:block`}>{previewBody}</div>
         </section>
       </div>
 
@@ -537,10 +652,11 @@ function EmailPageInner() {
       </section>
 
       {testOpen && (
-        <Dialog title="Invia email di test" onClose={() => setTestOpen(false)}>
+        <Dialog title="Invia prima a me" onClose={() => setTestOpen(false)}>
           <div className="flex flex-col gap-4">
+            <p className="admin-muted">Ti mandiamo una copia esatta dell&apos;email, così la controlli prima dell&apos;invio vero.</p>
             <label className="field">
-              <span className="field-label">Indirizzo di destinazione</span>
+              <span className="field-label">Il tuo indirizzo email</span>
               <span className="field-input">
                 <input
                   type="email"

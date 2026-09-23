@@ -741,6 +741,40 @@ def preview_email_campaign():
         return jsonify({"error": "Failed to preview email recipients"}), 500
 
 
+@admin_bp.route("/email-campaign/render", methods=["POST"])
+@limiter.limit("30 per minute")
+@admin_auth_required
+def render_email_campaign():
+    """Render the campaign email HTML for preview purposes; never sends anything."""
+    try:
+        data = request.get_json() or {}
+        subject = str(data.get("subject") or "").strip()
+        heading = str(data.get("heading") or "").strip()
+
+        payload = {
+            "heading": heading or subject,
+            "intro_text": str(data.get("intro_text") or "").strip(),
+            "body_text": str(data.get("body_text") or "").strip(),
+            "footer_note": str(data.get("footer_note") or "").strip()
+            or "Messaggio interno SilverGate.",
+            "cta_text": str(data.get("cta_text") or "").strip(),
+            "cta_url": str(data.get("cta_url") or "").strip(),
+            "banner_image": str(data.get("banner_image") or "").strip(),
+            "logo_image": str(data.get("logo_image") or "").strip(),
+        }
+        image_error = _require_hosted_images(payload)
+        if image_error:
+            return jsonify({"error": image_error}), 400
+
+        # A fixed sample username, so the operator sees the greeting exactly as a
+        # recipient would. Empty intro/body renders fine — this is a preview.
+        html_body, _ = build_campaign_bodies(payload, "Mario Rossi")
+        return jsonify({"html": html_body})
+    except Exception as e:
+        logger.error("Email campaign render error: %s", e)
+        return jsonify({"error": "Failed to render the campaign email"}), 500
+
+
 @admin_bp.route("/email-campaign/send", methods=["POST"])
 @limiter.limit("5 per minute")
 @admin_auth_required

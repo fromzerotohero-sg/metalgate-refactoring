@@ -304,6 +304,20 @@ export type EmailSendPayload = {
   campaign_id?: string;
 };
 
+// Contenuto per l'anteprima live: gli stessi campi accettati da /send, senza
+// destinatari. Il logo è nel template fisso, quindi niente banner/logo qui.
+export type EmailRenderPayload = {
+  subject: string;
+  heading?: string;
+  intro_text?: string;
+  body_text?: string;
+  footer_note?: string;
+  cta_text?: string;
+  cta_url?: string;
+};
+
+export type EmailRenderResponse = { html: string };
+
 export type EmailSendFailure = { email: string; error: string };
 
 // In modalità test il backend restituisce solo un sottoinsieme dei campi.
@@ -406,10 +420,12 @@ export const adminApi = {
   aiByStreamer: () => request<{ by_streamer: AiStreamerUsage[] }>("/ai/by-streamer"),
   activity: (days = 30) => request<{ activity: ActivityPoint[] }>(`/activity?days=${days}`),
   revenue: (days = 30) => request<{ revenue: RevenuePoint[] }>(`/revenue?days=${days}`),
-  emailPreview: (body: { filters: CampaignFilters; banner_image?: string; logo_image?: string }) =>
+  emailPreview: (body: { filters: CampaignFilters }) =>
     request<EmailPreviewResponse>("/email-campaign/preview", { method: "POST", body: JSON.stringify(body) }),
   emailSend: (body: EmailSendPayload) =>
     request<EmailSendResponse>("/email-campaign/send", { method: "POST", body: JSON.stringify(body) }),
+  emailRender: (body: EmailRenderPayload) =>
+    request<EmailRenderResponse>("/email-campaign/render", { method: "POST", body: JSON.stringify(body) }),
   emailHistory: (page = 1, perPage = 20) =>
     request<EmailHistoryResponse>(`/email-campaign/history?page=${page}&per_page=${perPage}`),
   grantCredits: (id: string, body: { amount: number; reason?: string; expires_in_days?: number }) =>

@@ -23,6 +23,10 @@ MAX_BATCH_SIZE = 100
 # Resend caps an idempotency key at 256 characters.
 MAX_IDEMPOTENCY_KEY_LENGTH = 256
 
+# Brand logo hosted by the public frontend, used when a campaign does not
+# specify its own logo_image.
+DEFAULT_CAMPAIGN_LOGO = "https://fromzerotohero.io/logo.webp"
+
 
 class EmailService:
     def __init__(self):
@@ -531,7 +535,7 @@ def build_campaign_bodies(payload: dict, username: str | None) -> tuple:
     cta_text = html.escape(str(payload.get("cta_text", "")).strip())
     cta_url = str(payload.get("cta_url", "")).strip()
     banner_image = sanitize_image_src(payload.get("banner_image"))
-    logo_image = sanitize_image_src(payload.get("logo_image"))
+    logo_image = sanitize_image_src(payload.get("logo_image")) or DEFAULT_CAMPAIGN_LOGO
     footer_note = html.escape(str(payload.get("footer_note", "")).strip()).replace(
         "\n", "<br>"
     )
