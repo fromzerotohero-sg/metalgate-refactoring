@@ -592,3 +592,175 @@ limitato al dominio del brand così ogni piattaforma lo condivide.
   Stripe.
 - Codificare a mano i nomi dei piani, i prezzi o il testo dell'upgrade — arrivano
   dall'API.
+
+---
+
+## 13. Chat / Supporto clienti
+
+Il lato utente della chat di supporto operatore↔cliente. L'autenticazione è il
+normale cookie di sessione (§1) — non esiste una credenziale separata per la chat.
+Ogni rotta è limitata all'utente autenticato: chiedere la conversazione di qualcun
+altro restituisce `404`, non `403`, perché l'esistenza del thread di un altro
+cliente non sono affari tuoi.
+
+Un utente ha **al massimo una conversazione aperta alla volta**, e le conversazioni
+vengono chiuse e riaperte dall'operatore, mai dal cliente. Non c'è websocket né SSE —
+il realtime è polling volutamente (il serverless non mantiene connessioni long-lived
+in modo affidabile); vedi *Costruire il widget* più sotto.
+
+### `POST /api/chat/conversations`
+
+Rate limit: 10 al minuto.
+
+Apre una conversazione con il suo primo messaggio — oppure, se il chiamante ha già
+una conversazione **aperta**, aggiunge il messaggio a quella e restituisce lei.
+`subject` viene salvato solo quando viene creata una nuova conversazione; è accettato
+ma ignorato quando si aggiunge a una esistente.
+
+```json
+{ "subject": "Crediti mancanti dopo il pagamento", "body": "Ciao, ho pagato ieri ma i crediti non sono arrivati." }
+```
+
+- `body` è obbligatorio, massimo 4000 caratteri dopo il trim.
+- `subject` è opzionale, troncato a 200 caratteri; vuoto significa `null`.
+
+**201** — è stata creata una nuova conversazione:
+
+```json
+{
+  "conversation": {
+    "id": "b7f2c1a4-…",
+    "subject": "Crediti mancanti dopo il pagamento",
+    "status": "open",
+    "last_message_at": "2026-09-21T10:14:00+00:00",
+    "unread_user_count": 0,
+    "created_at": "2026-09-21T10:14:00+00:00"
+  },
+  "message": {
+    "id": 128,
+    "conversation_id": "b7f2c1a4-…",
+    "sender": "user",
+    "body": "Ciao, ho pagato ieri ma i crediti non sono arrivati.",
+    "created_at": "2026-09-21T10:14:00+00:00",
+    "read_at": null
+  },
+  "appended": false
+}
+```
+
+**200** — il chiamante aveva già una conversazione aperta; il messaggio è stato
+aggiunto a quella e la risposta porta `"appended": true`. Controlla sempre `appended`
+prima di dare per scontato che esista un nuovo thread — renderizza la `conversation`
+restituita, non quella che ti aspettavi.
+
+`400` `{"error": "body is required"}` oppure
+`{"error": "body must be at most 4000 characters"}`.
+
+### `GET /api/chat/conversations`
+
+Le conversazioni del chiamante, dalla più recente per attività, al massimo 50. Ogni
+voce porta un'anteprima del suo ultimo messaggio:
+
+```json
+{ "conversations": [
+  { "id": "b7f2c1a4-…",
+    "subject": "Crediti mancanti dopo il pagamento",
+    "status": "open",
+    "last_message_at": "2026-09-21T10:31:00+00:00",
+    "unread_user_count": 2,
+    "created_at": "2026-09-21T10:14:00+00:00",
+    "last_message": { "sender": "admin",
+                      "preview": "Grazie — vedo l'addebito, fammi controllare…",
+                      "created_at": "2026-09-21T10:31:00+00:00" } }
+] }
+```
+
+`status` è `"open"` o `"closed"`. `last_message.preview` è troncato a 200 caratteri
+e `last_message` è `null` solo per una conversazione senza messaggi (cosa che
+normalmente non può accadere — ogni conversazione inizia con un messaggio).
+`unread_user_count` è il numero del badge: i messaggi admin non ancora confermati
+tramite l'endpoint `read` qui sotto.
+
+### `GET /api/chat/conversations/<conversation_id>/messages?after=<message_id>`
+
+Il thread, dal più vecchio, al massimo 200 messaggi per chiamata. `after` è ciò che
+rende il polling economico: passa l'id del messaggio più recente che hai già e
+ottieni solo quelli più nuovi. Omettilo per il primo caricamento completo.
+
+```json
+{
+  "conversation": { "id": "b7f2c1a4-…", "subject": "Crediti mancanti dopo il pagamento",
+                    "status": "open", "last_message_at": "2026-09-21T10:31:00+00:00",
+                    "unread_user_count": 2, "created_at": "2026-09-21T10:14:00+00:00" },
+  "messages": [
+    { "id": 129, "conversation_id": "b7f2c1a4-…", "sender": "admin",
+      "body": "Grazie — vedo l'addebito, fammi controllare…",
+      "created_at": "2026-09-21T10:31:00+00:00", "read_at": null }
+  ]
+}
+```
+
+`sender` è `"user"` o `"admin"`. `read_at` viene impostato sui messaggi admin una
+volta che l'utente li ha visti.
+
+`404` se la conversazione non esiste o appartiene a qualcun altro.
+`400` `{"error": "after must be an integer message id"}` per un `after` non intero.
+
+### `POST /api/chat/conversations/<conversation_id>/messages`
+
+Rate limit: 30 al minuto.
+
+Aggiunge un messaggio. Solo finché la conversazione è aperta.
+
+```json
+{ "body": "Ci sono novità?" }
+```
+
+**201** — `{"conversation": {…}, "message": {…}}`, stesse forme di sopra.
+
+`404` sconosciuta o non tua. `409` `{"error": "Conversation is closed"}` —
+l'operatore ha chiuso il thread e solo l'operatore può riaprirlo, quindi mostra lo
+stato chiuso più un'azione "inizia una nuova conversazione" (che è di nuovo `POST
+/api/chat/conversations`). `400` per un body vuoto o oltre i 4000 caratteri.
+
+### `POST /api/chat/conversations/<conversation_id>/read`
+
+Rate limit: 60 al minuto.
+
+Segna come letti tutti i messaggi admin non letti del thread e azzera
+`unread_user_count`. Nessun body. Chiamalo quando il thread diventa davvero visibile
+(widget aperto, scroll fino al messaggio più recente), non a ogni poll.
+
+```json
+{ "marked_read": 2 }
+```
+
+`404` come sempre.
+
+### Costruire il widget
+
+Cadenza di polling consigliata:
+
+- **Thread aperto:** ogni ~5 s, `GET …/messages?after=<last_id>`. Tieni l'`id` più
+  alto che hai renderizzato e ripassalo; un array `messages` vuoto significa che non
+  c'è nulla di nuovo. La risposta porta anche la conversazione, quindi osserva
+  `status` per accorgerti quando l'operatore chiude il thread.
+- **Lista conversazioni / badge:** ogni 15–30 s, `GET /api/chat/conversations` —
+  abbastanza per tenere fresco il badge dei non letti mentre il widget è chiuso.
+- **Pausa quando la scheda è nascosta:** ferma entrambi i timer mentre
+  `document.hidden` è true, e fai un poll di recupero quando la scheda torna
+  visibile.
+
+**Invio ottimistico:** renderizza subito il messaggio con uno stato "invio…", poi
+sostituiscilo con il `message` restituito al `201`. In caso di fallimento segnalo
+come fallito e offri il retry — non perderlo mai in silenzio, e non ritentare mai un
+`409`.
+
+**Limiti:** il body di un messaggio è al massimo 4000 caratteri e il subject al
+massimo 200. Valida entrambi lato client così l'utente non viene respinto con un
+`400`.
+
+**Una conversazione aperta:** fare POST a `/api/chat/conversations` mentre un thread
+è aperto gli aggiunge il messaggio (`200`, `appended: true`) invece di creare un
+secondo thread — quindi "nuova conversazione" nella UI ha senso solo quando quella
+precedente mostra `"status": "closed"`.

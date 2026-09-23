@@ -79,6 +79,7 @@ both expect.
 | `routes.py` | `/api` — sessions, profile, credits, transactions, billing |
 | `routes_sso.py` | `/api` — verification, password reset, the platform SSO exchange |
 | `routes_streamer.py` | `/api` — the streamer (partner) portal |
+| `routes_chat.py` | `/api/chat` — the customer side of the support chat (polling; the operator side is in `routes_admin.py`) |
 | `routes_admin.py` | `/api/admin` — the admin control platform's data API |
 
 There is no circular import between the route modules: anything they share lives
@@ -96,6 +97,7 @@ psql "$SUPABASE_DB_URL" -f sql/003_plans_and_subscriptions.sql
 psql "$SUPABASE_DB_URL" -f sql/004_admin_audit_and_reset_attempts.sql
 psql "$SUPABASE_DB_URL" -f sql/005_google_oauth.sql
 psql "$SUPABASE_DB_URL" -f sql/006_transaction_service.sql
+psql "$SUPABASE_DB_URL" -f sql/007_chat.sql
 ```
 
 All are additive and idempotent. `002` creates
@@ -105,7 +107,10 @@ required for plans; `004` adds `admin_audit_log` and the reset-code attempt
 counter; `005` adds `oauth_identities`, which only Google sign-in needs — without
 it every other sign-in path is unaffected; `006` adds `transactions.service`,
 the platform that recorded a spend — without it `POST /api/credits/spend` still
-moves the credits, it just records no attribution.
+moves the credits, it just records no attribution; `007` adds
+`chat_conversations`/`chat_messages` for the support chat and
+`admin_audit_log.detail`, the human-readable summary of a write action —
+without it the `/api/chat/*` and `/api/admin/chat/*` endpoints fail.
 
 ---
 
@@ -328,17 +333,32 @@ offering a button that cannot work.
 | GET | `/api/streamer/subordinates` | Direct subordinates, paged |
 | GET | `/api/streamer/<id>/subscribed` | The caller's **whole branch**: their own referred users plus their downline's. Paged |
 
+### Chat (customer support)
+
+Polling, not websockets (Vercel serverless). One open conversation per user:
+posting while one is open appends to it.
+
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/api/chat/conversations` | `{subject?, body}` — opens a conversation, or appends to the open one (`appended: true`) |
+| GET | `/api/chat/conversations` | The caller's conversations with unread count and last-message preview |
+| GET | `/api/chat/conversations/<id>/messages?after=<id>` | The thread; `after` makes it incremental for polling |
+| POST | `/api/chat/conversations/<id>/messages` | `{body}` — only while the conversation is open (`409` otherwise) |
+| POST | `/api/chat/conversations/<id>/read` | Stamps `read_at` on the operator's messages, zeroes the caller's unread counter |
+
 ### Admin
 
 Gated by `X-Admin-Code`. Every bulk read is chunked and paged.
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/api/admin/stats` · `/users` · `/users/<id>` · `/transactions` · `/activity` | Customer analytics |
+| GET | `/api/admin/stats` · `/users` · `/users/<id>` · `/transactions` · `/activity` | Customer analytics. `/users` and `/transactions` take `sort`/`order` (whitelisted columns) plus date-range and field filters; `/streamers` takes `sort`/`order` |
 | GET | `/api/admin/streamers` | Paged list, with `subordinate_ids` and `network_referred_num` per manager |
 | GET | `/api/admin/streamers/<id>` | One streamer's **branch**: subordinate streamers and every user they collectively referred, each paged |
 | POST | `/api/admin/streamers` · PATCH `/streamers/<id>/manager` | Create a partner; assign or clear a manager (cycle-checked) |
 | POST | `/api/admin/users/<id>/credits` | Grant temporary credits |
+| GET | `/api/admin/chat/conversations` · `/chat/conversations/<id>/messages` · `/chat/unread-count` | Support inbox: paged list (`status`, `search`), full thread (marks the customer's messages read), badge count |
+| POST | `/api/admin/chat/conversations/<id>/messages` · `/close` · `/reopen` | Operator reply; close/reopen a conversation |
 | POST | `/api/admin/email-campaign/preview` · `/send` | Filtered campaigns, batched through Resend |
 | GET | `/api/admin/ai/*` · `/openai/*` | AI usage from `ai_usage_logs`, plus a live read from OpenAI |
 

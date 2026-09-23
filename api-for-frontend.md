@@ -582,3 +582,171 @@ the brand domain so every platform shares it.
 - Show users raw credit counts.
 - Build your own cancellation or checkout UI instead of Stripe's hosted pages.
 - Hard-code plan names, prices or the upgrade wording — they come from the API.
+
+---
+
+## 13. Chat / Customer support
+
+The user side of the operator↔customer support chat. Auth is the ordinary session
+cookie (§1) — there is no separate chat credential. Every route is scoped to the
+signed-in user: asking about someone else's conversation returns `404`, not `403`,
+because the existence of another customer's thread is not your business.
+
+A user has **at most one open conversation** at a time, and conversations are closed
+and reopened by the operator, never by the customer. There is no websocket or SSE —
+realtime is deliberate polling (serverless does not hold long-lived connections
+reliably); see *Building the widget* below.
+
+### `POST /api/chat/conversations`
+
+Rate limit: 10 per minute.
+
+Opens a conversation with its first message — or, if the caller already has an
+**open** conversation, appends the message to that one and returns it instead.
+`subject` is only stored when a new conversation is created; it is accepted but
+ignored when appending.
+
+```json
+{ "subject": "Credits missing after payment", "body": "Hi, I paid yesterday but my credits did not arrive." }
+```
+
+- `body` is required, max 4000 characters after trimming.
+- `subject` is optional, truncated to 200 characters; empty means `null`.
+
+**201** — a new conversation was created:
+
+```json
+{
+  "conversation": {
+    "id": "b7f2c1a4-…",
+    "subject": "Credits missing after payment",
+    "status": "open",
+    "last_message_at": "2026-09-21T10:14:00+00:00",
+    "unread_user_count": 0,
+    "created_at": "2026-09-21T10:14:00+00:00"
+  },
+  "message": {
+    "id": 128,
+    "conversation_id": "b7f2c1a4-…",
+    "sender": "user",
+    "body": "Hi, I paid yesterday but my credits did not arrive.",
+    "created_at": "2026-09-21T10:14:00+00:00",
+    "read_at": null
+  },
+  "appended": false
+}
+```
+
+**200** — the caller already had an open conversation; the message was appended to
+it and the response carries `"appended": true`. Always check `appended` before
+assuming a new thread exists — render the returned `conversation`, not the one you
+expected.
+
+`400` `{"error": "body is required"}` or
+`{"error": "body must be at most 4000 characters"}`.
+
+### `GET /api/chat/conversations`
+
+The caller's conversations, newest activity first, at most 50. Each entry carries a
+preview of its last message:
+
+```json
+{ "conversations": [
+  { "id": "b7f2c1a4-…",
+    "subject": "Credits missing after payment",
+    "status": "open",
+    "last_message_at": "2026-09-21T10:31:00+00:00",
+    "unread_user_count": 2,
+    "created_at": "2026-09-21T10:14:00+00:00",
+    "last_message": { "sender": "admin",
+                      "preview": "Thanks — I can see the charge, let me check…",
+                      "created_at": "2026-09-21T10:31:00+00:00" } }
+] }
+```
+
+`status` is `"open"` or `"closed"`. `last_message.preview` is truncated to 200
+characters and `last_message` is `null` only for a conversation with no messages
+(which cannot normally happen — every conversation starts with one).
+`unread_user_count` is the badge number: admin messages not yet acknowledged via
+the `read` endpoint below.
+
+### `GET /api/chat/conversations/<conversation_id>/messages?after=<message_id>`
+
+The thread, oldest first, at most 200 messages per call. `after` is what makes
+polling cheap: pass the id of the newest message you already have and you get only
+the newer ones. Omit it for the first full load.
+
+```json
+{
+  "conversation": { "id": "b7f2c1a4-…", "subject": "Credits missing after payment",
+                    "status": "open", "last_message_at": "2026-09-21T10:31:00+00:00",
+                    "unread_user_count": 2, "created_at": "2026-09-21T10:14:00+00:00" },
+  "messages": [
+    { "id": 129, "conversation_id": "b7f2c1a4-…", "sender": "admin",
+      "body": "Thanks — I can see the charge, let me check…",
+      "created_at": "2026-09-21T10:31:00+00:00", "read_at": null }
+  ]
+}
+```
+
+`sender` is `"user"` or `"admin"`. `read_at` is set on admin messages once the user
+has seen them.
+
+`404` if the conversation does not exist or belongs to someone else.
+`400` `{"error": "after must be an integer message id"}` for a non-integer `after`.
+
+### `POST /api/chat/conversations/<conversation_id>/messages`
+
+Rate limit: 30 per minute.
+
+Appends a message. Only while the conversation is open.
+
+```json
+{ "body": "Any update on this?" }
+```
+
+**201** — `{"conversation": {…}, "message": {…}}`, same shapes as above.
+
+`404` unknown or not yours. `409` `{"error": "Conversation is closed"}` — the
+operator closed the thread and only the operator can reopen it, so show the closed
+state plus a "start a new conversation" action (which is `POST
+/api/chat/conversations` again). `400` for an empty or over-4000-character body.
+
+### `POST /api/chat/conversations/<conversation_id>/read`
+
+Rate limit: 60 per minute.
+
+Marks every unread admin message in the thread as read and zeroes
+`unread_user_count`. No body. Call it when the thread actually becomes visible
+(widget opened, scrolled to the newest message), not on every poll.
+
+```json
+{ "marked_read": 2 }
+```
+
+`404` as usual.
+
+### Building the widget
+
+Recommended polling cadence:
+
+- **Open thread:** every ~5 s, `GET …/messages?after=<last_id>`. Keep the highest
+  message `id` you have rendered and pass it back; an empty `messages` array means
+  nothing new. The response also carries the conversation, so watch `status` to
+  notice when the operator closes the thread.
+- **Conversation list / badge:** every 15–30 s, `GET /api/chat/conversations` —
+  enough to keep the unread badge fresh while the widget is collapsed.
+- **Pause when hidden:** stop both timers while `document.hidden` is true, and run
+  one catch-up poll when the tab becomes visible again.
+
+**Optimistic send:** render the message immediately with a "sending…" state, then
+replace it with the returned `message` on `201`. On failure mark it as failed and
+offer retry — never drop it silently, and never retry a `409`.
+
+**Limits:** a message body is at most 4000 characters and a subject at most 200.
+Validate both client-side so the user is not bounced with a `400`.
+
+**One open conversation:** posting to `/api/chat/conversations` while a thread is
+open appends to it (`200`, `appended: true`) instead of creating a second thread —
+so "new conversation" in the UI only makes sense once the previous one shows
+`"status": "closed"`.

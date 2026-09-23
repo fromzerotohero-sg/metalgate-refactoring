@@ -191,6 +191,10 @@ def _register_blueprints(app: Flask) -> None:
 
     app.register_blueprint(streamer_bp, url_prefix="/api")
 
+    from routes_chat import chat_bp
+
+    app.register_blueprint(chat_bp)
+
     from routes_admin import admin_bp
 
     app.register_blueprint(admin_bp)

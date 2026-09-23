@@ -43,6 +43,10 @@ from credits import (
 from email_service import MAX_BATCH_SIZE, EmailService, build_campaign_bodies
 from extensions import limiter
 from pagination import DEFAULT_PAGE_SIZE as MAX_PAGE_SIZE, fetch_all
+from routes_chat import (
+    MAX_MESSAGE_LENGTH as MAX_CHAT_MESSAGE_LENGTH,
+    last_messages_by_conversation,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -181,6 +185,11 @@ def _record_admin_action(response):
                 "ip": auth.client_ip(),
                 "user_agent": (auth.user_agent() or "")[:500] or None,
                 "actor": "shared_admin_code",
+                # What the action actually did ("granted 50 credits, reason: …").
+                # Views set `g.admin_action_detail`; reads leave it NULL. The
+                # column is added by migration 007 — on a database without it
+                # the insert fails, is logged below, and the response stands.
+                "detail": getattr(g, "admin_action_detail", None),
             }
         ).execute()
     except Exception as exc:
@@ -278,6 +287,54 @@ def _admin_paginate(rows: list, page: int, per_page: int) -> dict:
             "total_pages": (total + per_page - 1) // per_page,
         },
     }
+
+
+def _admin_sort_params(allowed: tuple, default: str, default_desc: bool = True):
+    """
+    ``(column, descending)`` for the request's `sort`/`order` params, or
+    ``None`` when either is invalid — the caller answers 400 and names the
+    whitelist.
+
+    The whitelist is the whole point: the chosen column goes straight into a
+    PostgREST `order()` call, so it must be one of these constants and never
+    raw caller input.
+    """
+    sort = (request.args.get("sort") or "").strip() or default
+    if sort not in allowed:
+        return None
+    order = (request.args.get("order") or "").strip().lower()
+    if order not in ("", "asc", "desc"):
+        return None
+    descending = default_desc if not order else order == "desc"
+    return sort, descending
+
+
+def _date_bound(value, *, end_of_day: bool):
+    """
+    An ISO date/datetime query value as a timestamp bound, or ``None``.
+
+    A bare `YYYY-MM-DD` means the start of that day for a lower bound and the
+    end of it for an upper bound, so `created_from=2026-09-01&created_to=
+    2026-09-21` covers the whole last day instead of its first second. Raises
+    ``ValueError`` on anything unparseable; the caller turns that into a 400.
+    """
+    raw = (value or "").strip()
+    if not raw:
+        return None
+    candidate = raw
+    if len(raw) == 10:  # YYYY-MM-DD
+        candidate = raw + ("T23:59:59.999999+00:00" if end_of_day else "T00:00:00+00:00")
+    try:
+        return sessions.parse_dt(candidate).isoformat()
+    except (TypeError, ValueError):
+        raise ValueError(f"Invalid ISO date: {raw!r}") from None
+
+
+def _invalid_sort(allowed: tuple):
+    return (
+        jsonify({"error": f"Invalid sort or order. Sortable columns: {', '.join(allowed)}"}),
+        400,
+    )
 
 
 def _total_available_credits(user: dict) -> int:
@@ -488,6 +545,25 @@ USER_LIST_COLUMNS = (
     "id, username, email, tag, credits_balance, temp_credits_balance, "
     "email_verified, created_at, last_login, "
     "referral_code, referred_by, referred_by_streamer, stripe_customer_id"
+)
+
+# The only columns the list endpoints will ever order by. A `sort` value goes
+# into a PostgREST `order()` call, so it is checked against these constants
+# and never passed through raw.
+USER_SORT_COLUMNS = (
+    "created_at",
+    "last_login",
+    "last_activity_at",
+    "credits_balance",
+    "username",
+    "email",
+)
+TRANSACTION_SORT_COLUMNS = ("timestamp", "amount", "type", "status")
+STREAMER_SORT_COLUMNS = (
+    "created_at",
+    "referred_num",
+    "total_earned",
+    "balance_available",
 )
 
 # How many sample recipients a preview returns (the full count is returned too).
@@ -928,6 +1004,17 @@ def get_users():
             "status", ""
         )  # verified, unverified, active, inactive
 
+        sort_params = _admin_sort_params(USER_SORT_COLUMNS, "created_at")
+        if not sort_params:
+            return _invalid_sort(USER_SORT_COLUMNS)
+        sort_column, sort_desc = sort_params
+
+        try:
+            created_from = _date_bound(request.args.get("created_from"), end_of_day=False)
+            created_to = _date_bound(request.args.get("created_to"), end_of_day=True)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
         week_ago = (sessions.now() - timedelta(days=7)).isoformat()
         month_ago = (sessions.now() - timedelta(days=30)).isoformat()
 
@@ -946,11 +1033,16 @@ def get_users():
             elif status == "inactive":
                 query = query.lt("last_login", month_ago)
 
+            if created_from:
+                query = query.gte("created_at", created_from)
+            if created_to:
+                query = query.lte("created_at", created_to)
+
             # NOTE: min_credits is deliberately NOT applied in SQL. It has to count
             # temporary credits as well, which is only possible once the rows are
             # in Python — see the filter below.
             return (
-                query.order("created_at", desc=True)
+                query.order(sort_column, desc=sort_desc)
                 .order("id")
                 .range(offset, offset + limit - 1)
                 .execute()
@@ -1087,10 +1179,35 @@ def get_recent_transactions():
         supabase = db.require_client()
         limit = max(1, min(500, _safe_int(request.args.get("limit"), 50)))
 
+        sort_params = _admin_sort_params(TRANSACTION_SORT_COLUMNS, "timestamp")
+        if not sort_params:
+            return _invalid_sort(TRANSACTION_SORT_COLUMNS)
+        sort_column, sort_desc = sort_params
+
+        tx_type = (request.args.get("type") or "").strip()
+        tx_status = (request.args.get("status") or "").strip()
+        user_id = (request.args.get("user_id") or "").strip()
+        try:
+            date_from = _date_bound(request.args.get("from"), end_of_day=False)
+            date_to = _date_bound(request.args.get("to"), end_of_day=True)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+        query = supabase.table("transactions").select("*, users(username, email)")
+        if tx_type:
+            query = query.eq("type", tx_type)
+        if tx_status:
+            query = query.eq("status", tx_status)
+        if user_id:
+            query = query.eq("user_id", user_id)
+        if date_from:
+            query = query.gte("timestamp", date_from)
+        if date_to:
+            query = query.lte("timestamp", date_to)
+
         result = (
-            supabase.table("transactions")
-            .select("*, users(username, email)")
-            .order("timestamp", desc=True)
+            query.order(sort_column, desc=sort_desc)
+            .order("id")
             .limit(limit)
             .execute()
         )
@@ -1215,6 +1332,12 @@ def create_streamer():
         if not new_cred.data:
             return jsonify({"error": "Failed to create credentials"}), 500
 
+        g.admin_action_detail = (
+            f"Created streamer {streamer_id} (id_code {id_code!r}"
+            + (f", manager {manager_code!r}" if manager_code else "")
+            + ")"
+        )
+
         return jsonify(
             {
                 "message": "Streamer created successfully",
@@ -1254,6 +1377,15 @@ def list_streamers():
             "true",
             "yes",
         )
+
+        # Sorted in Python, not in SQL: the list is assembled from several
+        # sources (live referral counts, AI usage) rather than selected from one
+        # table, so the final ordering happens on the output rows. The column is
+        # still whitelist-checked — never raw input.
+        sort_params = _admin_sort_params(STREAMER_SORT_COLUMNS, "created_at")
+        if not sort_params:
+            return _invalid_sort(STREAMER_SORT_COLUMNS)
+        sort_column, sort_desc = sort_params
 
         # Paginated, because a capped read would silently hide streamers past
         # 1,000. Ordering on a unique column after the visible one keeps paging
@@ -1326,6 +1458,17 @@ def list_streamers():
                     "network_referred_num": network_referred_num,
                 }
             )
+
+        # None-safe ordering: missing values sort last in descending order (and
+        # first ascending), and rows missing the column never compare against
+        # rows that have it, so a str column and a numeric one cannot collide.
+        output.sort(
+            key=lambda row: (
+                row.get(sort_column) is not None,
+                row.get(sort_column) if row.get(sort_column) is not None else 0,
+            ),
+            reverse=sort_desc,
+        )
 
         return jsonify({"streamers": output, "total": len(output)})
 
@@ -1503,6 +1646,12 @@ def update_streamer_manager(streamer_id):
         if not updated.data:
             return jsonify({"error": "Failed to update streamer manager"}), 500
 
+        g.admin_action_detail = (
+            f"Assigned manager {manager_code!r} (id {manager_id}) to streamer {streamer_id}"
+            if manager_id
+            else f"Cleared the manager of streamer {streamer_id}"
+        )
+
         return jsonify(
             {
                 "message": "Streamer manager updated successfully",
@@ -1567,6 +1716,10 @@ def admin_grant_credits(user_id):
         )
 
         record_transaction(supabase, user_id, amount, TX_BONUS, reason)
+
+        g.admin_action_detail = (
+            f"Granted {amount} temporary credits to user {user_id} (reason: {reason})"
+        )
 
         return jsonify(
             {
@@ -2052,6 +2205,346 @@ def get_openai_models():
     except Exception as e:
         logger.error("OpenAI models error: %s", e)
         return jsonify({"error": "Failed to fetch models"}), 500
+
+
+# ── Chat inbox (operator side of the support chat) ──────────────────────────
+#
+# The customer side lives in `routes_chat.py` (`/api/chat/*`). These endpoints
+# are on this blueprint deliberately: the after_request hook above then records
+# every read and write in `admin_audit_log`, and the blueprint-wide rate limit
+# below applies, with no second copy of either mechanism.
+
+CHAT_STATUS_FILTERS = ("open", "closed", "all")
+
+
+def _chat_conversation(supabase, conversation_id):
+    """The conversation row, or ``None``."""
+    result = (
+        supabase.table("chat_conversations")
+        .select("*")
+        .eq("id", conversation_id)
+        .limit(1)
+        .execute()
+    )
+    return result.data[0] if result.data else None
+
+
+def _chat_message_payload(row: dict) -> dict:
+    return {
+        "id": row["id"],
+        "conversation_id": str(row["conversation_id"]),
+        "sender": row.get("sender"),
+        "body": row.get("body"),
+        "created_at": row.get("created_at"),
+        "read_at": row.get("read_at"),
+    }
+
+
+def _chat_user_summary(supabase, user_id) -> dict | None:
+    result = (
+        supabase.table("users")
+        .select("id, username, email, created_at, last_login")
+        .eq("id", user_id)
+        .limit(1)
+        .execute()
+    )
+    return result.data[0] if result.data else None
+
+
+@admin_bp.route("/chat/conversations", methods=["GET"])
+@admin_auth_required
+def list_chat_conversations():
+    """
+    The support inbox: conversations newest activity first, with the customer,
+    the operator's unread count and a preview of the last message.
+
+    `?status=open|closed|all` (default `open`), `?search=` matches the
+    customer's username or email, `?page=&per_page=` page the result.
+    """
+    try:
+        supabase = db.require_client()
+        status = (request.args.get("status") or "open").strip().lower()
+        if status not in CHAT_STATUS_FILTERS:
+            return jsonify({"error": "status must be open, closed or all"}), 400
+
+        search = (request.args.get("search") or "").strip().lower()
+        page, per_page = _admin_page_params()
+
+        def _page(offset, limit):
+            query = supabase.table("chat_conversations").select(
+                "*, users(username, email)"
+            )
+            if status != "all":
+                query = query.eq("status", status)
+            return (
+                query.order("last_message_at", desc=True, nullsfirst=False)
+                .order("id")
+                .range(offset, offset + limit - 1)
+                .execute()
+                .data
+            )
+
+        rows = fetch_all(_page)
+
+        # Client-side, like the user list's search: PostgREST cannot express
+        # "username or email contains" over the embedded resource.
+        if search:
+            rows = [
+                row
+                for row in rows
+                if search in str((row.get("users") or {}).get("username") or "").lower()
+                or search in str((row.get("users") or {}).get("email") or "").lower()
+            ]
+
+        page_block = _admin_paginate(rows, page, per_page)
+        previews = last_messages_by_conversation(
+            supabase, [row["id"] for row in page_block["items"]]
+        )
+
+        items = []
+        for row in page_block["items"]:
+            user = row.get("users") or {}
+            last = previews.get(str(row["id"]))
+            items.append(
+                {
+                    "id": str(row["id"]),
+                    "status": row.get("status"),
+                    "subject": row.get("subject"),
+                    "last_message_at": row.get("last_message_at"),
+                    "unread_admin_count": int(row.get("unread_admin_count") or 0),
+                    "created_at": row.get("created_at"),
+                    "user": {
+                        "id": str(row.get("user_id")),
+                        "username": user.get("username"),
+                        "email": user.get("email"),
+                    },
+                    "last_message": (
+                        {
+                            "sender": last.get("sender"),
+                            "preview": str(last.get("body") or "")[:200],
+                            "created_at": last.get("created_at"),
+                        }
+                        if last
+                        else None
+                    ),
+                }
+            )
+
+        return jsonify(
+            {
+                "conversations": items,
+                "total": page_block["meta"]["total"],
+                "page": page_block["meta"]["page"],
+                "per_page": page_block["meta"]["per_page"],
+                "total_pages": page_block["meta"]["total_pages"],
+            }
+        )
+
+    except Exception as e:
+        logger.error("Admin chat list error: %s", e)
+        return jsonify({"error": "Failed to fetch conversations"}), 500
+
+
+@admin_bp.route("/chat/conversations/<conversation_id>/messages", methods=["GET"])
+@admin_auth_required
+def get_chat_thread(conversation_id):
+    """
+    The full thread plus a summary of the customer it belongs to.
+
+    Opening the thread is also the operator's acknowledgement: the customer's
+    messages are stamped `read_at` and the conversation's operator-unread
+    counter is zeroed, which is what keeps `/chat/unread-count` meaningful.
+    """
+    try:
+        supabase = db.require_client()
+        conversation = _chat_conversation(supabase, conversation_id)
+        if not conversation:
+            return jsonify({"error": "Conversation not found"}), 404
+
+        messages = fetch_all(
+            lambda offset, limit: (
+                supabase.table("chat_messages")
+                .select("*")
+                .eq("conversation_id", str(conversation["id"]))
+                .order("id")
+                .range(offset, offset + limit - 1)
+                .execute()
+                .data
+            )
+        )
+
+        supabase.table("chat_messages").update(
+            {"read_at": sessions.now_iso()}
+        ).eq("conversation_id", str(conversation["id"])).eq("sender", "user").is_(
+            "read_at", "null"
+        ).execute()
+        supabase.table("chat_conversations").update(
+            {"unread_admin_count": 0}
+        ).eq("id", str(conversation["id"])).execute()
+        conversation["unread_admin_count"] = 0
+
+        return jsonify(
+            {
+                "conversation": {
+                    "id": str(conversation["id"]),
+                    "status": conversation.get("status"),
+                    "subject": conversation.get("subject"),
+                    "last_message_at": conversation.get("last_message_at"),
+                    "unread_admin_count": 0,
+                    "unread_user_count": int(conversation.get("unread_user_count") or 0),
+                    "created_at": conversation.get("created_at"),
+                },
+                "user": _chat_user_summary(supabase, conversation.get("user_id")),
+                "messages": [_chat_message_payload(row) for row in messages],
+            }
+        )
+
+    except Exception as e:
+        logger.error("Admin chat thread error: %s", e)
+        return jsonify({"error": "Failed to fetch the conversation"}), 500
+
+
+@admin_bp.route("/chat/conversations/<conversation_id>/messages", methods=["POST"])
+@limiter.limit("30 per minute")
+@admin_auth_required
+def reply_chat_conversation(conversation_id):
+    """Post the operator's reply. The conversation must be open — reopen it first if it was closed."""
+    try:
+        supabase = db.require_client()
+        conversation = _chat_conversation(supabase, conversation_id)
+        if not conversation:
+            return jsonify({"error": "Conversation not found"}), 404
+        if conversation.get("status") != "open":
+            return jsonify({"error": "Conversation is closed; reopen it before replying"}), 409
+
+        data = request.get_json(silent=True) or {}
+        body = str(data.get("body") or "").strip()
+        if not body:
+            return jsonify({"error": "body is required"}), 400
+        if len(body) > MAX_CHAT_MESSAGE_LENGTH:
+            return jsonify({"error": f"body must be at most {MAX_CHAT_MESSAGE_LENGTH} characters"}), 400
+
+        inserted = (
+            supabase.table("chat_messages")
+            .insert(
+                {
+                    "conversation_id": str(conversation["id"]),
+                    "sender": "admin",
+                    "body": body,
+                }
+            )
+            .execute()
+        )
+        message = inserted.data[0]
+
+        stamp = sessions.now_iso()
+        supabase.table("chat_conversations").update(
+            {
+                "last_message_at": stamp,
+                "unread_user_count": int(conversation.get("unread_user_count") or 0) + 1,
+            }
+        ).eq("id", str(conversation["id"])).execute()
+
+        g.admin_action_detail = (
+            f"Replied to chat conversation {conversation_id} ({len(body)} characters)"
+        )
+
+        return jsonify({"message": _chat_message_payload(message)}), 201
+
+    except Exception as e:
+        logger.error("Admin chat reply error: %s", e)
+        return jsonify({"error": "Failed to send the reply"}), 500
+
+
+def _set_chat_status(conversation_id, status: str):
+    """Shared body of the close/reopen endpoints."""
+    supabase = db.require_client()
+    conversation = _chat_conversation(supabase, conversation_id)
+    if not conversation:
+        return jsonify({"error": "Conversation not found"}), 404
+
+    if conversation.get("status") == status:
+        return jsonify(
+            {
+                "conversation_id": str(conversation["id"]),
+                "status": status,
+                "changed": False,
+            }
+        )
+
+    updated = (
+        supabase.table("chat_conversations")
+        .update({"status": status})
+        .eq("id", str(conversation["id"]))
+        .execute()
+    )
+    if not updated.data:
+        return jsonify({"error": "Failed to update the conversation"}), 500
+
+    g.admin_action_detail = (
+        f"{'Closed' if status == 'closed' else 'Reopened'} chat conversation {conversation_id}"
+    )
+
+    return jsonify(
+        {
+            "conversation_id": str(conversation["id"]),
+            "status": status,
+            "changed": True,
+        }
+    )
+
+
+@admin_bp.route("/chat/conversations/<conversation_id>/close", methods=["POST"])
+@limiter.limit("30 per minute")
+@admin_auth_required
+def close_chat_conversation(conversation_id):
+    """Close a conversation. The customer can no longer post into it."""
+    try:
+        return _set_chat_status(conversation_id, "closed")
+    except Exception as e:
+        logger.error("Admin chat close error: %s", e)
+        return jsonify({"error": "Failed to close the conversation"}), 500
+
+
+@admin_bp.route("/chat/conversations/<conversation_id>/reopen", methods=["POST"])
+@limiter.limit("30 per minute")
+@admin_auth_required
+def reopen_chat_conversation(conversation_id):
+    """Reopen a closed conversation."""
+    try:
+        return _set_chat_status(conversation_id, "open")
+    except Exception as e:
+        logger.error("Admin chat reopen error: %s", e)
+        return jsonify({"error": "Failed to reopen the conversation"}), 500
+
+
+@admin_bp.route("/chat/unread-count", methods=["GET"])
+@admin_auth_required
+def chat_unread_count():
+    """Total unread customer messages across open conversations — the nav badge."""
+    try:
+        supabase = db.require_client()
+        rows = fetch_all(
+            lambda offset, limit: (
+                supabase.table("chat_conversations")
+                .select("unread_admin_count")
+                .eq("status", "open")
+                .order("id")
+                .range(offset, offset + limit - 1)
+                .execute()
+                .data
+            )
+        )
+        return jsonify(
+            {
+                "unread": sum(int(row.get("unread_admin_count") or 0) for row in rows),
+                "open_conversations": len(rows),
+            }
+        )
+
+    except Exception as e:
+        logger.error("Admin chat unread count error: %s", e)
+        return jsonify({"error": "Failed to fetch the unread count"}), 500
 
 
 # ── Blueprint-wide rate limit ───────────────────────────────────────────────
