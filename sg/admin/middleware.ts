@@ -10,7 +10,7 @@ function policy(nonce: string, development: boolean) {
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${development ? " 'unsafe-eval'" : ""}`,
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob:",
+    "img-src 'self' data: blob: https://www.fromzerotohero.io",
     "font-src 'self' data:",
     `connect-src 'self'${apiOrigin ? ` ${apiOrigin}` : ""}`,
     "form-action 'self'",
