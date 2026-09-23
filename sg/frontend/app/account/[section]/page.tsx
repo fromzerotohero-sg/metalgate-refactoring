@@ -152,6 +152,9 @@ export default function AccountSectionPage() {
   const usage = credits?.usage;
   const plan = credits?.plan;
   const percent = typeof usage?.percent === "number" ? Math.min(100, Math.max(0, usage.percent)) : 0;
+  // A free user has no plan allowance, so the API measures the bar against their
+  // bonus credits instead — and the fill is amber for the same reason: it is all bonus.
+  const hasBonusCredits = (usage?.credits_allowance ?? 0) > 0;
 
   const payments = transactions.filter((transaction) => transaction.amount > 0);
   const usageList = transactions.filter((transaction) => transaction.amount <= 0);
@@ -250,12 +253,18 @@ export default function AccountSectionPage() {
                   {plan && plan.active !== false && plan.cancel_at_period_end && <span className="badge-ended">{t("section.subscription.endsTitle")}</span>}
                   {plan?.active === false && <span className="badge-ended">{t("section.subscription.ended")}</span>}
                 </div>
-                {plan && (
+                {plan ? (
                   <>
                     <div className="progress-track"><div className={`progress-fill ${usage?.overfilled ? "bonus" : ""}`} style={{ width: `${usage?.overfilled ? 100 : percent}%` }} /></div>
                     <p className="progress-label">{Math.round(usage?.overfilled ? 100 : percent)}% {t("account.used")}</p>
                     {usage?.overfilled && <div className="inline-message">{t("section.subscription.bonus")}</div>}
                     {plan.active === false && <div className="inline-message">{t("section.subscription.ended")}</div>}
+                  </>
+                ) : hasBonusCredits && (
+                  <>
+                    <div className="progress-track"><div className="progress-fill bonus" style={{ width: `${percent}%` }} /></div>
+                    <p className="progress-label">{Math.round(percent)}% {t("account.used")}</p>
+                    <div className="inline-message">{t("account.bonusOnly")}</div>
                   </>
                 )}
                 <div className="card-actions">
