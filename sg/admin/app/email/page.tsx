@@ -24,7 +24,7 @@ const RENDER_DEBOUNCE_MS = 800;
 type Preset = { id: string; label: string; description: string; filters: CampaignFilters };
 
 const PRESETS: Preset[] = [
-  { id: "tutti", label: "Tutti gli iscritti", description: "Ogni utente registrato a SilverGate.", filters: {} },
+  { id: "tutti", label: "Tutti gli iscritti", description: "Ogni utente registrato a From Zero To Hero.", filters: {} },
   { id: "verificati", label: "Email verificate", description: "Solo chi ha confermato il proprio indirizzo.", filters: { verified_status: "verified" } },
   { id: "non_verificati", label: "Email non verificate", description: "Chi non ha ancora confermato l'indirizzo.", filters: { verified_status: "unverified" } },
   { id: "attivi_30", label: "Attivi di recente", description: "Chi è entrato negli ultimi 30 giorni.", filters: { active_within_days: 30 } },
@@ -248,8 +248,8 @@ function EmailPageInner() {
   const recipientsCount = singleMode ? 1 : (preview?.recipients_count ?? null);
   const canSend = Boolean(subject.trim()) && Boolean(bodyText.trim()) && !sending && (singleMode || (recipientsCount ?? 0) > 0);
 
-  // Il titolo interno non si chiede più: il backend usa l'oggetto come heading
-  // e il piè di pagina standard quando i campi non arrivano.
+  // Il titolo interno non si chiede più: senza heading l'email si apre
+  // direttamente col saluto, e il piè di pagina standard arriva dal backend.
   const buildPayload = useCallback(
     (extra: Partial<EmailSendPayload>): EmailSendPayload => ({
       subject: subject.trim(),
@@ -339,7 +339,7 @@ function EmailPageInner() {
         <div className="overflow-hidden rounded-2xl border border-line bg-white shadow-sm">
           <div className="border-b border-line bg-surface px-4 py-3">
             <p className="truncate text-sm font-bold text-ink">{subject.trim() || "(Senza oggetto)"}</p>
-            <p className="text-xs text-muted">Da: SilverGate</p>
+            <p className="text-xs text-muted">Da: From Zero To Hero &lt;info@fromzerotohero.io&gt;</p>
           </div>
           <div className="relative">
             {renderHtml ? (
@@ -502,7 +502,7 @@ function EmailPageInner() {
 
         <div className="flex flex-col gap-5">
           <section className="admin-card">
-            <StepHeader number="2" title="Cosa dici?" subtitle="Il logo e la grafica SilverGate sono già nel template — scrivi solo il testo." />
+            <StepHeader number="2" title="Cosa dici?" subtitle="Il logo e la grafica From Zero To Hero sono già nel template — scrivi solo il testo." />
 
             <div className="flex flex-col gap-4">
               <label className="field">

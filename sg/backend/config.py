@@ -368,7 +368,7 @@ class Config:
     # ── Email ───────────────────────────────────────────────────────────────
     RES_API_KEY = os.environ.get("RES_API_KEY")
     EMAIL_FROM = os.environ.get("EMAIL_FROM", "info@fromzerotohero.io")
-    EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME", "SilverGate")
+    EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME", "From Zero To Hero")
     EMAIL_VERIFICATION_URL = os.environ.get("EMAIL_VERIFICATION_URL") or f"{APP_URL}/verify-email"
 
     # ── OpenAI ──────────────────────────────────────────────────────────────

@@ -748,15 +748,14 @@ def render_email_campaign():
     """Render the campaign email HTML for preview purposes; never sends anything."""
     try:
         data = request.get_json() or {}
-        subject = str(data.get("subject") or "").strip()
         heading = str(data.get("heading") or "").strip()
 
         payload = {
-            "heading": heading or subject,
+            "heading": heading,
             "intro_text": str(data.get("intro_text") or "").strip(),
             "body_text": str(data.get("body_text") or "").strip(),
             "footer_note": str(data.get("footer_note") or "").strip()
-            or "Messaggio interno SilverGate.",
+            or "Il team di From Zero To Hero",
             "cta_text": str(data.get("cta_text") or "").strip(),
             "cta_url": str(data.get("cta_url") or "").strip(),
             "banner_image": str(data.get("banner_image") or "").strip(),
@@ -807,10 +806,10 @@ def send_email_campaign():
             return jsonify({"error": "Write at least intro or body text"}), 400
 
         payload = {
-            "heading": heading or subject,
+            "heading": heading,
             "intro_text": intro_text,
             "body_text": body_text,
-            "footer_note": footer_note or "Messaggio interno SilverGate.",
+            "footer_note": footer_note or "Il team di From Zero To Hero",
             "cta_text": cta_text,
             "cta_url": cta_url,
             "banner_image": banner_image,

@@ -25,7 +25,7 @@ MAX_IDEMPOTENCY_KEY_LENGTH = 256
 
 # Brand logo hosted by the public frontend, used when a campaign does not
 # specify its own logo_image.
-DEFAULT_CAMPAIGN_LOGO = "https://fromzerotohero.io/logo.webp"
+DEFAULT_CAMPAIGN_LOGO = "https://www.fromzerotohero.io/logo.webp"
 
 
 class EmailService:
@@ -399,7 +399,7 @@ Non rispondere a questa email.
     def send_password_reset_code(self, user_email, code):
         """Send password reset code"""
         try:
-            subject = "Reset your SilverGate password"
+            subject = "Reset your From Zero To Hero password"
 
             html_body = f"""
             <!DOCTYPE html>
@@ -458,7 +458,7 @@ Non rispondere a questa email.
             </head>
             <body>
                 <div class="header">
-                    <div class="logo">SilverGate</div>
+                    <div class="logo">From Zero To Hero</div>
                 </div>
 
                 <div class="content">
@@ -478,8 +478,8 @@ Non rispondere a questa email.
                 </div>
 
                 <div class="footer">
-                    <p>This is an automated message from SilverGate. Please do not reply to this email.</p>
-                    <p>© 2024 SilverGate. All rights reserved.</p>
+                    <p>This is an automated message from From Zero To Hero. Please do not reply to this email.</p>
+                    <p>© 2024 From Zero To Hero. All rights reserved.</p>
                 </div>
             </body>
             </html>
@@ -488,7 +488,7 @@ Non rispondere a questa email.
             text_body = f"""
             Password Reset Request
 
-            We received a request to reset your SilverGate password.
+            We received a request to reset your From Zero To Hero password.
 
             Your reset code is: {code}
 
@@ -496,7 +496,7 @@ Non rispondere a questa email.
 
             If you didn't request this, you can ignore this email.
 
-            © 2024 SilverGate
+            © 2024 From Zero To Hero
             """
 
             return self.send_email(user_email, subject, html_body, text_body)
@@ -529,7 +529,7 @@ def sanitize_image_src(value) -> str:
 
 def build_campaign_bodies(payload: dict, username: str | None) -> tuple:
     """Render one campaign email for one recipient: ``(html, text)``."""
-    heading = html.escape(str(payload.get("heading", "")).strip() or "Comunicazione")
+    heading = html.escape(str(payload.get("heading", "")).strip())
     intro = html.escape(str(payload.get("intro_text", "")).strip()).replace("\n", "<br>")
     body = html.escape(str(payload.get("body_text", "")).strip()).replace("\n", "<br>")
     cta_text = html.escape(str(payload.get("cta_text", "")).strip())
@@ -567,7 +567,7 @@ def build_campaign_bodies(payload: dict, username: str | None) -> tuple:
         safe_logo = html.escape(logo_image, quote=True)
         logo_block = f"""
         <div style="margin-bottom: 12px;">
-          <img src="{safe_logo}" alt="SilverGate" style="max-height: 56px; width: auto; display: inline-block;">
+          <img src="{safe_logo}" alt="From Zero To Hero" style="max-height: 56px; width: auto; display: inline-block;">
         </div>
         """
 
@@ -581,6 +581,30 @@ def build_campaign_bodies(payload: dict, username: str | None) -> tuple:
           </td>
         </tr>
         """
+
+    heading_block = ""
+    if heading:
+        heading_block = f"""
+                    <h1 style="
+                      margin: 0 0 24px 0;
+                      font-size: 34px;
+                      font-weight: 800;
+                      color: #ffffff;
+                      line-height: 1.2;
+                      letter-spacing: -0.5px;
+                    ">{heading}</h1>"""
+
+    footer_note_block = ""
+    if footer_note:
+        footer_note_block = f"""
+                    <p style="
+                      margin: 32px 0 0 0;
+                      padding-top: 20px;
+                      border-top: 1px solid #1e1e2e;
+                      font-size: 13px;
+                      line-height: 1.7;
+                      color: #8f87ab;
+                    ">{footer_note}</p>"""
 
     html_body = f"""
     <!DOCTYPE html>
@@ -610,20 +634,12 @@ def build_campaign_bodies(payload: dict, username: str | None) -> tuple:
                       letter-spacing: 0.6px;
                       color: #F4EEFF;
                       text-shadow: 0 0 18px rgba(189,159,237,0.18);
-                    ">SilverGate</span>
+                    ">From Zero To Hero</span>
                   </td>
                 </tr>
                 {banner_block}
                 <tr>
-                  <td style="padding: 40px 40px 0 40px;">
-                    <h1 style="
-                      margin: 0 0 24px 0;
-                      font-size: 34px;
-                      font-weight: 800;
-                      color: #ffffff;
-                      line-height: 1.2;
-                      letter-spacing: -0.5px;
-                    ">{heading}</h1>
+                  <td style="padding: 40px 40px 0 40px;">{heading_block}
                     <p style="
                       margin: 0 0 20px 0;
                       font-size: 16px;
@@ -643,29 +659,7 @@ def build_campaign_bodies(payload: dict, username: str | None) -> tuple:
                       color: #d7d0ea;
                     ">{body}</p>
 
-                    <div style="
-                      background: linear-gradient(180deg, rgba(216,180,254,0.14) 0%, rgba(125,211,252,0.10) 100%);
-                      border: 1px solid rgba(216,180,254,0.32);
-                      box-shadow: 0 10px 30px rgba(0,0,0,0.18);
-                      border-radius: 14px;
-                      padding: 22px 24px;
-                      margin: 30px 0;
-                    ">
-                      <p style="
-                        margin: 0 0 10px 0;
-                        font-size: 14px;
-                        font-weight: 800;
-                        text-transform: uppercase;
-                        letter-spacing: 1px;
-                        color: #F3E8FF;
-                      ">Messaggio dal team</p>
-                      <p style="
-                        margin: 0;
-                        font-size: 15px;
-                        line-height: 1.8;
-                        color: #e6def7;
-                      ">{footer_note}</p>
-                    </div>
+                    {footer_note_block}
 
                     {cta_html}
                   </td>
@@ -677,7 +671,7 @@ def build_campaign_bodies(payload: dict, username: str | None) -> tuple:
                     text-align: center;
                   ">
                     <p style="margin: 0 0 6px 0; font-size: 12px; color: #4a4a6a;">
-                      © 2025 SilverGate — Tutti i diritti riservati
+                      © 2025 From Zero To Hero — Tutti i diritti riservati
                     </p>
                     <p style="margin: 0; font-size: 12px; color: #4a4a6a;">
                       Non rispondere a questa email.
@@ -698,7 +692,7 @@ def build_campaign_bodies(payload: dict, username: str | None) -> tuple:
         f"{str(payload.get('intro_text', '')).strip()}\n\n"
         f"{str(payload.get('body_text', '')).strip()}\n\n"
         f"{str(payload.get('footer_note', '')).strip()}\n\n"
-        "© 2025 SilverGate — Tutti i diritti riservati\n"
+        "© 2025 From Zero To Hero — Tutti i diritti riservati\n"
         "Non rispondere a questa email."
         f"{cta_text_line}"
     )
