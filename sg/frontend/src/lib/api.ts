@@ -81,6 +81,27 @@ export type Transaction = {
 
 export type AuthSession = { id: string; current?: boolean; service?: string; user_agent?: string; last_seen_at?: string; created_at?: string };
 
+export type ChatConversationStatus = "open" | "closed";
+
+export type ChatConversation = {
+  id: string;
+  subject?: string | null;
+  status: ChatConversationStatus;
+  last_message_at?: string | null;
+  unread_user_count: number;
+  created_at?: string | null;
+  last_message?: { sender?: "user" | "admin"; preview: string; created_at?: string | null } | null;
+};
+
+export type ChatMessage = {
+  id: number;
+  conversation_id: string;
+  sender: "user" | "admin";
+  body: string;
+  created_at?: string | null;
+  read_at?: string | null;
+};
+
 /**
  * A Stripe invoice.
  *
@@ -147,7 +168,21 @@ export const api = {
   portal: (return_url?: string) => request<{ url: string }>("/stripe/portal", json(return_url ? { return_url } : {})),
   // Cancels at the end of the paid period, not immediately: see the route.
   cancelSubscription: () => request<{ message: string }>("/stripe/cancel", json({ cancel: true })),
-  invoices: () => request<{ invoices: Invoice[] }>("/stripe/invoices")
+  invoices: () => request<{ invoices: Invoice[] }>("/stripe/invoices"),
+  chatConversations: () => request<{ conversations: ChatConversation[] }>("/chat/conversations"),
+  chatMessages: (conversationId: string, after?: number) =>
+    request<{ conversation: ChatConversation; messages: ChatMessage[] }>(
+      `/chat/conversations/${encodeURIComponent(conversationId)}/messages${after ? `?after=${after}` : ""}`
+    ),
+  createChatConversation: (body: string, subject?: string) =>
+    request<{ conversation: ChatConversation; message: ChatMessage; appended: boolean }>("/chat/conversations", json({ body, subject })),
+  sendChatMessage: (conversationId: string, body: string) =>
+    request<{ conversation: ChatConversation; message: ChatMessage }>(
+      `/chat/conversations/${encodeURIComponent(conversationId)}/messages`,
+      json({ body })
+    ),
+  markChatRead: (conversationId: string) =>
+    request<{ marked_read: number }>(`/chat/conversations/${encodeURIComponent(conversationId)}/read`, json({}))
 };
 
 /**

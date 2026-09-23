@@ -45,6 +45,7 @@ from extensions import limiter
 from pagination import DEFAULT_PAGE_SIZE as MAX_PAGE_SIZE, fetch_all
 from routes_chat import (
     MAX_MESSAGE_LENGTH as MAX_CHAT_MESSAGE_LENGTH,
+    MAX_OPEN_CONVERSATIONS_PER_USER,
     last_messages_by_conversation,
 )
 
@@ -2471,6 +2472,25 @@ def _set_chat_status(conversation_id, status: str):
                 "changed": False,
             }
         )
+
+    if status == "open":
+        open_threads = (
+            supabase.table("chat_conversations")
+            .select("id")
+            .eq("user_id", conversation["user_id"])
+            .eq("status", "open")
+            .limit(MAX_OPEN_CONVERSATIONS_PER_USER)
+            .execute()
+        )
+        if len(open_threads.data or []) >= MAX_OPEN_CONVERSATIONS_PER_USER:
+            return jsonify(
+                {
+                    "error": (
+                        f"This user already has {MAX_OPEN_CONVERSATIONS_PER_USER} open conversations. "
+                        "Close one before reopening another."
+                    )
+                }
+            ), 409
 
     updated = (
         supabase.table("chat_conversations")

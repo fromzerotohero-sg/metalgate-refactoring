@@ -131,6 +131,7 @@ export default function AccountPage() {
             <a href={href("/account/subscription")}>{t("menu.subscription")}</a>
             <a href={href("/account/security")}>{t("menu.security")}</a>
             <a href={href("/account/transactions")}>{t("menu.activity")}</a>
+            <a href={href("/account/support")}>{t("menu.support")}</a>
             <button onClick={async () => { if (!preview) await api.logout().catch(() => {}); window.location.href = "/"; }}>{t("menu.logout")}</button>
           </nav>
 

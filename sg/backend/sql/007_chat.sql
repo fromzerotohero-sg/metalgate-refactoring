@@ -53,11 +53,18 @@ comment on table public.chat_messages is
 create index if not exists idx_chat_conversations_user_id
     on public.chat_conversations (user_id);
 
+-- Enforces the application's "at most three open threads per user" check
+-- without scanning closed conversation history.
+create index if not exists idx_chat_conversations_user_open
+    on public.chat_conversations (user_id)
+    where status = 'open';
+
 -- The admin inbox, newest activity first.
 create index if not exists idx_chat_conversations_last_message_at
     on public.chat_conversations (last_message_at desc);
 
--- Thread reads and the incremental `?after=<id>` polling.
+-- Thread reads, the incremental `?after=<id>` polling, and the application's
+-- check for the latest three consecutive user messages.
 create index if not exists idx_chat_messages_conversation_id
     on public.chat_messages (conversation_id, id);
 

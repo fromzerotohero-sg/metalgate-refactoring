@@ -8,12 +8,13 @@ import { useT } from "@/src/lib/i18n";
 import { SiteHeader } from "@/src/components/SiteHeader";
 import { SiteFooter } from "@/src/components/SiteFooter";
 import { Icon } from "@/src/components/Icon";
+import { SupportChat } from "@/src/components/SupportChat";
 
-type SectionKey = "profile" | "subscription" | "security" | "transactions";
+type SectionKey = "profile" | "subscription" | "security" | "transactions" | "support";
 
 export default function AccountSectionPage() {
   const params = useParams<{ section: string }>();
-  const section = (["profile", "subscription", "security", "transactions"].includes(params.section) ? params.section : "profile") as SectionKey;
+  const section = (["profile", "subscription", "security", "transactions", "support"].includes(params.section) ? params.section : "profile") as SectionKey;
   const t = useT();
   const preview = isLocalPreview();
 
@@ -61,7 +62,7 @@ export default function AccountSectionPage() {
         setInvoicesFailed(invoiceResult === null);
       } else if (section === "security") {
         setSessions((await api.authSessions()).sessions ?? []);
-      } else {
+      } else if (section === "transactions") {
         setTransactions((await api.transactions()).transactions ?? []);
       }
     } catch (caught) {
@@ -377,6 +378,8 @@ export default function AccountSectionPage() {
             </article>
           </div>
         )}
+
+        {section === "support" && <SupportChat />}
 
         {section === "transactions" && (
           <>

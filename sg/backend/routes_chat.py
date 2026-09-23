@@ -1,10 +1,11 @@
 """
 SilverGate customer chat: the user side of the operator↔customer support chat.
 
-One open conversation per user at a time. Posting a first message opens the
-conversation; every later message appends to it while it is open. The operator
-side lives in `routes_admin.py` (`/api/admin/chat/*`), which is also where
-conversations are closed and reopened.
+A user may have up to three open conversations at a time. Posting to a thread
+is limited to three consecutive user messages; an administrator reply resets
+that allowance. The operator side lives in `routes_admin.py`
+(`/api/admin/chat/*`), which is also where conversations are closed and
+reopened.
 
 Auth is the ordinary session cookie (`auth.require_session`) — the chat is a
 feature of a signed-in account, not a separate credential. Every query is
@@ -41,10 +42,12 @@ MAX_SUBJECT_LENGTH = 200
 # How many messages one poll returns. Threads grow one message at a time, so
 # this only bounds the very first full load.
 MESSAGES_PAGE_SIZE = 200
-# How far back the conversation list reaches. One open conversation per user
-# makes a long history unlikely; the cap keeps the preview lookup bounded.
+# How far back the conversation list reaches. The cap keeps the preview lookup
+# bounded even when a user has a long support history.
 CONVERSATIONS_LIMIT = 50
 PREVIEW_LENGTH = 200
+MAX_OPEN_CONVERSATIONS_PER_USER = 3
+MAX_CONSECUTIVE_USER_MESSAGES = 3
 
 
 def _clean_body(value) -> str:
@@ -118,11 +121,52 @@ def _owned_conversation(supabase, conversation_id):
     return result.data[0] if result.data else None
 
 
+def _open_conversations(supabase) -> list[dict]:
+    """At most the configured cap; enough to enforce the user-side open-thread limit."""
+    result = (
+        supabase.table("chat_conversations")
+        .select("id")
+        .eq("user_id", g.user["id"])
+        .eq("status", "open")
+        .limit(MAX_OPEN_CONVERSATIONS_PER_USER)
+        .execute()
+    )
+    return list(result.data or [])
+
+
+def _consecutive_user_message_count(supabase, conversation_id) -> int:
+    """Count the latest uninterrupted run of user messages in a thread.
+
+    Fetching only the cap newest messages is sufficient: once an admin message
+    is found the run has ended, and if all fetched messages are from the user
+    the caller is already at (or over) the send limit.
+    """
+    result = (
+        supabase.table("chat_messages")
+        .select("sender")
+        .eq("conversation_id", str(conversation_id))
+        .order("id", desc=True)
+        .limit(MAX_CONSECUTIVE_USER_MESSAGES)
+        .execute()
+    )
+    count = 0
+    for message in result.data or []:
+        if message.get("sender") != "user":
+            break
+        count += 1
+    return count
+
+
+def _can_send_user_message(supabase, conversation_id) -> bool:
+    return _consecutive_user_message_count(supabase, conversation_id) < MAX_CONSECUTIVE_USER_MESSAGES
+
+
 def _insert_message(supabase, conversation: dict, body: str) -> dict:
     """
     Append a user message and move the conversation's polling metadata.
 
-    The unread counters are read-modify-write, which can theoretically lose an
+    The caller must check the consecutive-message limit before invoking this
+    helper. The unread counters are read-modify-write, which can theoretically lose an
     increment if both sides post in the same instant; at chat rates that is
     cosmetic (the badge is one off until the next message), and the
     alternative is a stored procedure for a counter the message table can
@@ -161,10 +205,10 @@ def create_conversation():
     """
     Open a conversation with its first message.
 
-    If the caller already has an open conversation the message is appended to
-    it instead and that conversation is returned — one open thread per user
-    keeps the admin inbox a queue rather than a pile of fragments. `subject`
-    is only used when a new conversation is created.
+    A user may keep at most three open support threads. Additional messages in
+    an existing thread use the thread-specific endpoint, which separately
+    limits the caller to three consecutive messages until an administrator
+    responds.
     """
     try:
         supabase = db.require_client()
@@ -178,26 +222,15 @@ def create_conversation():
 
         subject = _clean_body(data.get("subject"))[:MAX_SUBJECT_LENGTH] or None
 
-        existing = (
-            supabase.table("chat_conversations")
-            .select("*")
-            .eq("user_id", g.user["id"])
-            .eq("status", "open")
-            .order("created_at", desc=True)
-            .limit(1)
-            .execute()
-        )
-
-        if existing.data:
-            conversation = existing.data[0]
-            message = _insert_message(supabase, conversation, body)
+        if len(_open_conversations(supabase)) >= MAX_OPEN_CONVERSATIONS_PER_USER:
             return jsonify(
                 {
-                    "conversation": _conversation_payload(conversation),
-                    "message": _message_payload(message),
-                    "appended": True,
+                    "error": (
+                        f"You can have at most {MAX_OPEN_CONVERSATIONS_PER_USER} open conversations. "
+                        "Wait for an administrator to close one before starting another."
+                    )
                 }
-            )
+            ), 429
 
         inserted = (
             supabase.table("chat_conversations")
@@ -319,6 +352,16 @@ def post_message(conversation_id):
             return jsonify({"error": "body is required"}), 400
         if len(body) > MAX_MESSAGE_LENGTH:
             return jsonify({"error": f"body must be at most {MAX_MESSAGE_LENGTH} characters"}), 400
+
+        if not _can_send_user_message(supabase, conversation["id"]):
+            return jsonify(
+                {
+                    "error": (
+                        f"You can send at most {MAX_CONSECUTIVE_USER_MESSAGES} consecutive messages. "
+                        "Wait for an administrator to reply before sending another."
+                    )
+                }
+            ), 429
 
         message = _insert_message(supabase, conversation, body)
         return jsonify(

@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 
-from flask import jsonify
+from flask import current_app, jsonify
 
 import auth
 import db
@@ -26,6 +26,7 @@ from constants import (
     LOGIN_FAILED_EMAIL_NOT_VERIFIED,
     LOGIN_FAILED_INVALID_CREDENTIALS,
 )
+from email_service import EmailService
 
 logger = logging.getLogger(__name__)
 
@@ -56,10 +57,26 @@ def start_session(user: dict, *, service: str | None) -> tuple:
         user_agent=auth.user_agent(),
         service=service,
     )
+    _send_login_welcome_email(user, service)
     token = auth.issue_access_token(
         user, session_id=material["session"]["id"], client_id=service
     )
     return material, token
+
+
+def _send_login_welcome_email(user: dict, service: str | None) -> None:
+    """Best-effort welcome email for every successfully-created user session."""
+    try:
+        EmailService().send_login_welcome_email(
+            user_email=user["email"],
+            username=user.get("username") or user["email"].split("@")[0],
+            dashboard_url=current_app.config["DASHBOARD_URL"],
+            service=service,
+        )
+    except Exception as exc:
+        # An email provider outage must never stop an authenticated user receiving
+        # their session cookie. `send_email` records the provider-side details.
+        logger.warning("Welcome email failed after login for user %s: %s", user["id"], exc)
 
 
 def record_service_login(user: dict, service: str | None) -> None:

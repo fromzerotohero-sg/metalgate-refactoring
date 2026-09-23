@@ -203,11 +203,12 @@ class EmailService:
         # body: without this, a username containing markup is rendered as markup
         # in the recipient's mail client.
         safe_username = html.escape(username or "utente")
+        safe_verification_link = html.escape(verification_link, quote=True)
         try:
             logger.info("Starting email verification process for %s", user_email)
             logger.info("Verification link prepared for email delivery")
 
-            subject = "Conferma il tuo account SilverGate"
+            subject = "Conferma il tuo account From Zero To Hero"
 
             html_body = f"""
             <!DOCTYPE html>
@@ -217,8 +218,8 @@ class EmailService:
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <title>Conferma il tuo account</title>
             </head>
-            <body style="margin:0;padding:0;background-color:#08080f;font-family:'Segoe UI',Arial,sans-serif;color:#e8e8f0;">
-                <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#08080f;padding:48px 16px 56px;">
+            <body style="margin:0;padding:0;background-color:#f4f7fd;font-family:'Segoe UI',Arial,sans-serif;color:#0f172a;">
+                <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f4f7fd;padding:48px 16px 56px;">
                     <tr>
                         <td align="center">
                             <table width="560" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;width:100%;">
@@ -226,34 +227,34 @@ class EmailService:
                                 <!-- LOGO -->
                                 <tr>
                                     <td align="center" style="padding:0 0 36px 0;">
-                                        <span style="font-size:13px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:#4a4a6a;">FROM ZERO TO HERO</span>
+                                        <span style="font-size:13px;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:#081232;">FROM ZERO TO HERO</span>
                                     </td>
                                 </tr>
 
                                 <!-- CARD -->
                                 <tr>
-                                    <td style="background:#0e0e1a;border:1px solid #1c1c2e;border-radius:16px;overflow:hidden;">
+                                    <td style="background:#ffffff;border:1px solid #e3e9f4;border-radius:22px;overflow:hidden;box-shadow:0 18px 45px -18px rgba(8,18,50,0.22);">
 
                                         <!-- Accent top bar -->
-                                        <div style="height:3px;background:linear-gradient(90deg,#BD9FED 0%,#60B0CA 100%);"></div>
+                                        <div style="height:4px;background:#2563eb;background:linear-gradient(100deg,#2563eb 0%,#0ea5e9 60%,#22d3ee 130%);"></div>
 
                                         <!-- Body -->
                                         <table width="100%" cellpadding="0" cellspacing="0" border="0">
                                             <tr>
                                                 <td style="padding:44px 44px 0 44px;">
 
-                                                    <h1 style="margin:0 0 8px 0;font-size:28px;font-weight:800;color:#ffffff;line-height:1.25;letter-spacing:-0.3px;">Conferma il tuo account</h1>
-                                                    <p style="margin:0 0 28px 0;font-size:15px;color:#6666aa;">Un solo click per iniziare.</p>
+                                                    <h1 style="margin:0 0 8px 0;font-size:28px;font-weight:800;color:#0f172a;line-height:1.25;letter-spacing:-0.3px;">Conferma il tuo account</h1>
+                                                    <p style="margin:0 0 28px 0;font-size:15px;color:#64748b;">Un solo click per iniziare.</p>
 
-                                                    <p style="margin:0 0 18px 0;font-size:16px;line-height:1.75;color:#c8c8e0;">Ciao <strong style="color:#ffffff;">{safe_username}</strong>,</p>
+                                                    <p style="margin:0 0 18px 0;font-size:16px;line-height:1.75;color:#334155;">Ciao <strong style="color:#0f172a;">{safe_username}</strong>,</p>
 
-                                                    <p style="margin:0 0 32px 0;font-size:15px;line-height:1.85;color:#a0a0c0;">Grazie per esserti registrato su <strong style="color:#e8e8f0;">SilverGate</strong>. Premi il pulsante qui sotto per verificare il tuo indirizzo email e attivare il profilo.</p>
+                                                    <p style="margin:0 0 32px 0;font-size:15px;line-height:1.85;color:#475569;">Grazie per esserti registrato su <strong style="color:#0f172a;">From Zero To Hero</strong>. Premi il pulsante qui sotto per verificare il tuo indirizzo email e attivare il profilo.</p>
 
                                                     <!-- CTA -->
                                                     <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:32px;">
                                                         <tr>
                                                             <td align="center">
-                                                                <a href="{verification_link}" style="display:inline-block;background:linear-gradient(90deg,#BD9FED 0%,#7ec8e3 100%);color:#06060f;font-size:15px;font-weight:800;text-decoration:none;padding:15px 44px;border-radius:10px;letter-spacing:0.4px;">Verifica email &rarr;</a>
+                                                                <a href="{safe_verification_link}" style="display:inline-block;background:#2563eb;background:linear-gradient(100deg,#2563eb 0%,#0ea5e9 60%,#22d3ee 130%);color:#ffffff;font-size:15px;font-weight:800;text-decoration:none;padding:15px 44px;border-radius:14px;letter-spacing:0.2px;">Verifica email &rarr;</a>
                                                             </td>
                                                         </tr>
                                                     </table>
@@ -261,13 +262,13 @@ class EmailService:
                                                     <!-- GOLDEN BANNER -->
                                                     <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:32px;">
                                                         <tr>
-                                                            <td style="background:linear-gradient(135deg,#3a2800 0%,#5c3d00 50%,#3a2800 100%);border:1px solid #c8860a;border-radius:12px;padding:18px 22px;">
+                                                            <td style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:14px;padding:18px 22px;">
                                                                 <table width="100%" cellpadding="0" cellspacing="0" border="0">
                                                                     <tr>
                                                                         <td width="36" valign="middle" style="padding-right:14px;font-size:26px;line-height:1;">&#127873;</td>
                                                                         <td valign="middle">
-                                                                            <p style="margin:0 0 3px 0;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#f0a830;">Benvenuto</p>
-                                                                            <p style="margin:0;font-size:16px;font-weight:800;color:#ffe08a;">Goditi i tuoi 10 HP gratis!</p>
+                                                                            <p style="margin:0 0 3px 0;font-size:11px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:#2563eb;">Benvenuto</p>
+                                                                            <p style="margin:0;font-size:16px;font-weight:800;color:#0f172a;">Goditi i tuoi 10 HP gratis!</p>
                                                                         </td>
                                                                     </tr>
                                                                 </table>
@@ -276,12 +277,12 @@ class EmailService:
                                                     </table>
 
                                                     <!-- Expiry note -->
-                                                    <p style="margin:0 0 24px 0;font-size:13px;line-height:1.7;color:#55556a;">Il link scade tra <strong style="color:#7a7a9a;">24 ore</strong>. Se non hai creato tu questo account, ignora questa email.</p>
+                                                    <p style="margin:0 0 24px 0;font-size:13px;line-height:1.7;color:#64748b;">Il link scade tra <strong style="color:#475569;">24 ore</strong>. Se non hai creato tu questo account, ignora questa email.</p>
 
                                                     <!-- Fallback link -->
-                                                    <p style="margin:0 0 8px 0;font-size:13px;color:#55556a;">Se il bottone non funziona, copia questo link:</p>
-                                                    <div style="background:#0a0a14;border-left:3px solid #2e2e50;border-radius:6px;padding:12px 16px;margin:0 0 40px 0;">
-                                                        <a href="{verification_link}" style="color:#7ab8d4;word-break:break-all;text-decoration:none;font-size:12px;line-height:1.7;">{verification_link}</a>
+                                                    <p style="margin:0 0 8px 0;font-size:13px;color:#64748b;">Se il bottone non funziona, copia questo link:</p>
+                                                    <div style="background:#f8fafc;border-left:3px solid #2563eb;border-radius:8px;padding:12px 16px;margin:0 0 40px 0;">
+                                                        <a href="{safe_verification_link}" style="color:#2563eb;word-break:break-all;text-decoration:none;font-size:12px;line-height:1.7;">{safe_verification_link}</a>
                                                     </div>
 
                                                 </td>
@@ -289,8 +290,8 @@ class EmailService:
 
                                             <!-- Footer inside card -->
                                             <tr>
-                                                <td style="padding:20px 44px 28px 44px;border-top:1px solid #161625;">
-                                                    <p style="margin:0;font-size:13px;font-weight:600;color:#c8c8e0;">A presto,<br><span style="color:#BD9FED;">Team SilverGate</span></p>
+                                                <td style="padding:20px 44px 28px 44px;border-top:1px solid #e3e9f4;">
+                                                    <p style="margin:0;font-size:13px;font-weight:600;color:#475569;">A presto,<br><span style="color:#2563eb;">Team From Zero To Hero</span></p>
                                                 </td>
                                             </tr>
 
@@ -301,8 +302,8 @@ class EmailService:
                                 <!-- Bottom legal -->
                                 <tr>
                                     <td style="padding:28px 0 0 0;text-align:center;">
-                                        <p style="margin:0 0 4px 0;font-size:11px;color:#2e2e48;">© 2025 SilverGate — Tutti i diritti riservati</p>
-                                        <p style="margin:0;font-size:11px;color:#2e2e48;">Non rispondere a questa email.</p>
+                                        <p style="margin:0 0 4px 0;font-size:11px;color:#64748b;">© 2026 From Zero To Hero — Tutti i diritti riservati</p>
+                                        <p style="margin:0;font-size:11px;color:#64748b;">Non rispondere a questa email.</p>
                                     </td>
                                 </tr>
 
@@ -315,11 +316,11 @@ class EmailService:
             """
 
             text_body = f"""
-Conferma il tuo account SilverGate
+Conferma il tuo account From Zero To Hero
 
 Ciao {username or 'utente'},
 
-abbiamo ricevuto la tua registrazione su SilverGate.
+abbiamo ricevuto la tua registrazione su From Zero To Hero.
 Per attivare il profilo e completare l'accesso, conferma il tuo indirizzo email aprendo questo link:
 
 {verification_link}
@@ -328,9 +329,9 @@ Il link di verifica resta valido per 24 ore.
 Se non hai creato tu questo account, puoi ignorare tranquillamente questa email.
 
 A presto,
-Team SilverGate
+Team From Zero To Hero
 
-© 2025 SilverGate — Tutti i diritti riservati
+© 2026 From Zero To Hero — Tutti i diritti riservati
 Non rispondere a questa email.
             """
 
@@ -343,6 +344,53 @@ Non rispondere a questa email.
             logger.error("Failed to send verification email to %s: %s", user_email, e)
             logger.error("Exception details: %s", e)
             raise
+
+    def send_login_welcome_email(self, user_email, username, dashboard_url, service=None):
+        """Send the requested welcome email after a successful sign-in.
+
+        This is intentionally a separate transaction from creating the session:
+        delivery problems must never prevent a user from signing in.
+        """
+        safe_username = html.escape(username or user_email.split("@")[0])
+        safe_dashboard_url = html.escape(dashboard_url, quote=True)
+        service_name = "Google" if service == "google" else "il tuo account"
+        subject = "Benvenuto su From Zero To Hero"
+        html_body = f"""
+        <!DOCTYPE html>
+        <html lang="it">
+          <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>{subject}</title></head>
+          <body style="margin:0;padding:0;background:#f4f7fd;font-family:'Segoe UI',Arial,sans-serif;color:#0f172a;">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f4f7fd;padding:48px 16px 56px;">
+              <tr><td align="center">
+                <table width="560" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;width:100%;">
+                  <tr><td align="center" style="padding:0 0 28px;"><span style="font-size:13px;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:#081232;">FROM ZERO TO HERO</span></td></tr>
+                  <tr><td style="background:#ffffff;border:1px solid #e3e9f4;border-radius:22px;overflow:hidden;box-shadow:0 18px 45px -18px rgba(8,18,50,0.22);">
+                    <div style="height:4px;background:#2563eb;background:linear-gradient(100deg,#2563eb 0%,#0ea5e9 60%,#22d3ee 130%);"></div>
+                    <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                      <tr><td style="padding:42px 44px 36px;">
+                        <p style="margin:0 0 10px;font-size:12px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:#2563eb;">BENTORNATO</p>
+                        <h1 style="margin:0 0 14px;font-size:28px;font-weight:800;line-height:1.25;letter-spacing:-0.3px;color:#0f172a;">Ciao, {safe_username}.</h1>
+                        <p style="margin:0 0 26px;font-size:15px;line-height:1.8;color:#475569;">Hai effettuato l'accesso con {service_name}. Il tuo spazio personale è pronto: continua il tuo percorso, gestisci il profilo e scopri le piattaforme dell'ecosistema.</p>
+                        <table cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;"><tr><td align="center"><a href="{safe_dashboard_url}" style="display:inline-block;background:#2563eb;background:linear-gradient(100deg,#2563eb 0%,#0ea5e9 60%,#22d3ee 130%);color:#ffffff;font-size:15px;font-weight:800;text-decoration:none;padding:15px 30px;border-radius:14px;">Apri il tuo spazio &rarr;</a></td></tr></table>
+                      </td></tr>
+                      <tr><td style="padding:20px 44px 28px;border-top:1px solid #e3e9f4;"><p style="margin:0;font-size:13px;line-height:1.6;color:#64748b;">Se non riconosci questo accesso, cambia subito la password dal tuo profilo.<br><strong style="color:#2563eb;">Team From Zero To Hero</strong></p></td></tr>
+                    </table>
+                  </td></tr>
+                  <tr><td style="padding:28px 0 0;text-align:center;"><p style="margin:0;font-size:11px;color:#64748b;">© 2026 From Zero To Hero — Tutti i diritti riservati</p></td></tr>
+                </table>
+              </td></tr>
+            </table>
+          </body>
+        </html>
+        """
+        text_body = (
+            f"Benvenuto su From Zero To Hero\n\n"
+            f"Ciao {username or user_email.split('@')[0]},\n\n"
+            f"Hai effettuato l'accesso con {service_name}. Apri il tuo spazio: {dashboard_url}\n\n"
+            "Se non riconosci questo accesso, cambia subito la password dal tuo profilo.\n\n"
+            "Team From Zero To Hero"
+        )
+        return self.send_email(user_email, subject, html_body, text_body)
 
     def send_password_reset_code(self, user_email, code):
         """Send password reset code"""
