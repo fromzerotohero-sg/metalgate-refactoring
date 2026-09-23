@@ -175,7 +175,7 @@ export default function StreamerPortal() {
         <section className="login-layout">
           <div className="login-copy">
             <p className="eyebrow">{t.partnerPortal}</p>
-            <h1>{t.loginTitle.split(". ").map((part, index) => <span key={part}>{index > 0 && <br />}<em>{index === 1 ? part : undefined}</em>{index === 0 ? part : null}</span>)}</h1>
+            <h1>{t.loginTitlePrimary}<br /><em>{t.loginTitleAccent}</em></h1>
             <p>{t.loginLead}</p>
             <ul>
               <li>{t.loginBenefitEarnings}</li>
