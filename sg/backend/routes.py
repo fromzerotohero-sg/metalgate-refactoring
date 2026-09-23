@@ -31,6 +31,7 @@ import auth
 import billing
 import db
 import plans
+import platforms
 import referrals
 import sessions
 from auth_utils import hash_password, verify_password
@@ -80,6 +81,34 @@ def internal_api_key_required(view):
             logger.warning("Internal API call rejected: missing or invalid key")
             return jsonify({"error": "Unauthorized"}), 401
 
+        return view(*args, **kwargs)
+
+    return wrapper
+
+
+def platform_key_required(view):
+    """
+    Guard for endpoints a *platform* calls with its own API key.
+
+    Unlike `internal_api_key_required`, this resolves **which** platform is
+    calling and exposes it as ``g.platform_client_id``, so the action can be
+    attributed to it. That is the whole point: a platform's backend is handed a
+    key that identifies it, rather than the brand-wide internal key, which would
+    let any holder act as any platform with no trace.
+
+    The internal key is also accepted (mirroring `/api/sso/introspect`), so
+    SilverGate's own jobs can use the same path; in that case ``g.platform_client_id``
+    is ``None`` and the caller is recorded as internal.
+    """
+
+    @wraps(view)
+    def wrapper(*args, **kwargs):
+        caller = platforms.authenticate_api_key(request.headers.get("X-Platform-Key"))
+        if not caller and not auth.internal_key_ok():
+            logger.warning("Platform API call rejected: missing or invalid key")
+            return jsonify({"error": "Unauthorized"}), 401
+
+        g.platform_client_id = caller
         return view(*args, **kwargs)
 
     return wrapper
@@ -652,6 +681,118 @@ def internal_deduct_credits():
     except Exception as exc:
         logger.error("Credit deduction failed for %s: %s", user_id, exc)
         return jsonify({"error": "Failed to deduct credits"}), 500
+
+
+# Default ledger description for a spend that names none. A platform should always
+# send a meaningful one; this is the fallback, mirroring `/internal/deduct`.
+DEFAULT_SPEND_DESCRIPTION = "Credits spent"
+
+
+def _bearer_from_header() -> str | None:
+    """The `Authorization: Bearer` value, or ``None``. Never reads the cookie."""
+    header = request.headers.get("Authorization") or ""
+    if header.lower().startswith("bearer "):
+        return header[len("bearer "):].strip() or None
+    return None
+
+
+@bp.route("/credits/spend", methods=["POST"])
+@platform_key_required
+def spend_credits():
+    """
+    Spend a user's credits on behalf of a platform (server-to-server).
+
+    The platform-key counterpart to `/internal/deduct`: the balance moves the same
+    way, but the caller is identified by its own `X-Platform-Key` and the spend is
+    recorded against it. This is what lets a platform integrate **without** ever
+    holding the brand-wide internal key — see docs/api-for-platforms.md §8.2.
+
+    The user is taken from an `Authorization: Bearer <access token>` when one is
+    present — the safer form, since the platform can then only spend for a user it
+    actually holds a token for — and from `user_id` in the body otherwise. When
+    both are sent they must agree, so a client bug cannot spend the wrong account.
+    """
+    data = request.get_json(silent=True) or {}
+    amount = data.get("amount")
+    description = (data.get("description") or "").strip() or DEFAULT_SPEND_DESCRIPTION
+    claimed_user_id = data.get("user_id")
+
+    client_id = getattr(g, "platform_client_id", None)
+    bearer = _bearer_from_header()
+    identity = auth.resolve_bearer(bearer)
+
+    if identity:
+        user = identity["user"]
+        if claimed_user_id and str(claimed_user_id) != str(user["id"]):
+            logger.warning("Spend rejected: user_id does not match the bearer token.")
+            return jsonify({"error": "user_id does not match the bearer token"}), 403
+
+        # An access token carries the client it was issued to. Refuse a token
+        # minted for another platform, so one platform cannot spend against a
+        # credential belonging to another.
+        audience = (auth.decode_access_token(bearer) or {}).get("aud") if bearer else None
+        if audience and client_id and audience != client_id:
+            logger.warning("Spend rejected: token audience %s != caller %s.", audience, client_id)
+            return jsonify({"error": "This token was issued to a different platform"}), 403
+    else:
+        if not claimed_user_id:
+            return jsonify({"error": "A bearer token or user_id is required"}), 400
+        found = (
+            db.require_client()
+            .table("users")
+            .select("*")
+            .eq("id", claimed_user_id)
+            .execute()
+        )
+        if not found.data:
+            return jsonify({"error": "User not found"}), 404
+        user = found.data[0]
+
+    user_id = user["id"]
+    amount, error = _coerce_credit_request(user_id, amount)
+    if error:
+        return error
+
+    # Recorded against the platform, so "who spent this" is answerable from the
+    # ledger rather than only from request logs that Vercel rotates.
+    service = client_id or "internal"
+
+    try:
+        result = consume_credits(db.require_client(), user_id, amount)
+        record_transaction(
+            db.require_client(),
+            user_id,
+            -amount,
+            TX_DEDUCTION,
+            description,
+            service=service,
+        )
+
+        # Hand back the fresh usage so the platform can update its bar without a
+        # second round trip (parity with `/internal/deduct`).
+        refreshed = db.require_client().table("users").select("*").eq("id", user_id).execute()
+        if refreshed.data:
+            summary = plans.summarize(db.require_client(), refreshed.data[0])
+            usage, upgrade = summary["usage"], summary["upgrade"]
+        else:
+            usage, upgrade = None, None
+
+        return jsonify(
+            {
+                "user_id": user_id,
+                "amount_deducted": amount,
+                "new_balance": result["credits_balance"],
+                "temp_balance": result["temp_credits"],
+                "service": service,
+                "usage": usage,
+                "upgrade": upgrade,
+            }
+        ), 200
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), error_status(exc)
+    except Exception as exc:
+        logger.error("Platform spend failed for %s: %s", user_id, exc)
+        return jsonify({"error": "Failed to spend credits"}), 500
 
 
 def _coerce_credit_request(user_id, amount):

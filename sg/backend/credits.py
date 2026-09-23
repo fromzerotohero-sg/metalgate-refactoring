@@ -59,6 +59,12 @@ def record_transaction(
     credit change is the source of truth, and the history is derived from it.
     The ``id`` is supplied rather than left to the database so the fake/PostgREST
     paths behave identically.
+
+    ``extra`` passes additional columns through (e.g. `service`, the platform that
+    recorded the spend). If such a column does not exist yet — its migration has
+    not been applied — the insert is retried **without** the extra columns rather
+    than losing the row, because an attribution column must never cost us the
+    ledger entry it was meant to annotate.
     """
     row = {
         "id": str(uuid.uuid4()),
@@ -68,11 +74,30 @@ def record_transaction(
         "description": description,
         "status": status,
         "timestamp": sessions.now_iso(),
-        **extra,
     }
     try:
-        supabase.table("transactions").insert(row).execute()
+        supabase.table("transactions").insert({**row, **extra}).execute()
+        return
     except Exception as exc:
+        if extra:
+            logger.warning(
+                "Transaction insert with extra columns failed (%s); retrying "
+                "without them so the ledger row is not lost — has migration 006 "
+                "been applied?",
+                exc,
+            )
+            try:
+                supabase.table("transactions").insert(row).execute()
+                return
+            except Exception as retry_exc:
+                logger.error(
+                    "Failed to record %s transaction for %s: %s",
+                    type_,
+                    user_id,
+                    retry_exc,
+                )
+                return
+
         logger.error(
             "Failed to record %s transaction for %s: %s", type_, user_id, exc
         )

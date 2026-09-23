@@ -95,6 +95,7 @@ psql "$SUPABASE_DB_URL" -f sql/002_sessions_and_sso.sql
 psql "$SUPABASE_DB_URL" -f sql/003_plans_and_subscriptions.sql
 psql "$SUPABASE_DB_URL" -f sql/004_admin_audit_and_reset_attempts.sql
 psql "$SUPABASE_DB_URL" -f sql/005_google_oauth.sql
+psql "$SUPABASE_DB_URL" -f sql/006_transaction_service.sql
 ```
 
 All are additive and idempotent. `002` creates
@@ -102,7 +103,9 @@ All are additive and idempotent. `002` creates
 `003` adds `subscriptions`, `stripe_events` and the period usage counter, and is
 required for plans; `004` adds `admin_audit_log` and the reset-code attempt
 counter; `005` adds `oauth_identities`, which only Google sign-in needs — without
-it every other sign-in path is unaffected.
+it every other sign-in path is unaffected; `006` adds `transactions.service`,
+the platform that recorded a spend — without it `POST /api/credits/spend` still
+moves the credits, it just records no attribution.
 
 ---
 
@@ -227,7 +230,7 @@ grant it was. Analytics code must match all credit-in types — filtering on
 | `subscription_grant` | `billing.grant_period_allowance` | A plan allowance for a new billing period |
 | `purchase` | *legacy* | One-off credit packs, before subscriptions |
 | `bonus` | temporary credit grants (referral, signup, admin, `/internal/add`) | A granted expiring credit |
-| `deduction` | `/internal/deduct`, `/user/deduct` | Credits spent by a platform |
+| `deduction` | `POST /api/credits/spend`, `/internal/deduct`, `/user/deduct` | Credits spent by a platform. `transactions.service` (migration 006) names which one |
 
 `GET /api/transactions` returns `type` alongside the existing fields.
 
@@ -339,7 +342,8 @@ Gated by `X-Admin-Code`. Every bulk read is chunked and paged.
 |---|---|---|
 | GET | `/api/sso/authorize` | Session cookie; redirects with a one-time code |
 | POST | `/api/sso/token` | `X-Platform-Key` or PKCE |
-| POST | `/api/sso/introspect` | `X-Platform-Key` or `X-Internal-API-Key` |
+| POST | `/api/sso/introspect` | `X-Platform-Key` (or `X-Internal-API-Key`, for SilverGate's own jobs) |
+| POST | `/api/credits/spend` | `X-Platform-Key`, plus the user's `Authorization: Bearer` or a `user_id`. Spends credits, attributed to the calling platform |
 
 ### Unchanged, kept working
 
@@ -432,7 +436,8 @@ What is enforced, and where.
 | **CSRF** | `SameSite=Lax` plus an `Origin` allowlist on every cookie-authenticated state change. A cross-site form post cannot set `Content-Type: application/json`, and a cross-site `fetch` with it triggers a CORS preflight, so the JSON API is defended in depth |
 | **Platform exchange** | Single-use 256-bit code, hashed at rest, burned with a conditional update (race-safe), 60s TTL, bound to `client_id` and an exact-match `redirect_uri`, optional PKCE |
 | **Access tokens** | HS256, 10 minutes, carrying the session id so revocation still applies. Distinguished from streamer tokens only by the `type` claim, which is checked |
-| **Internal API** | `X-Internal-API-Key`, constant-time compared, header only (a query-string secret would land in logs, history and `Referer`s) |
+| **Internal API** | `X-Internal-API-Key`, constant-time compared, header only (a query-string secret would land in logs, history and `Referer`s). Brand-wide: for SilverGate's own jobs, never given to a platform |
+| **Platform API** | `X-Platform-Key`, one per registered platform, constant-time compared. Resolves to a `client_id`, so an action is attributable to the platform that took it, and `POST /api/credits/spend` records that in `transactions.service`. A platform holds this and nothing else |
 | **Admin API** | Three independent locks. **1)** Source address against `SG_ADMIN_IP_ALLOWLIST` (opt-in, fails closed), checked before any credential. **2)** `ADMIN_CODE`, constant-time, header only, no source default. **3)** a **TOTP second factor** (`SG_ADMIN_TOTP_SECRET`, RFC 6238, compatible with any authenticator app) so a leaked string is not enough on its own. Without a TOTP secret the admin API **closes itself** in production (503) rather than falling back to one factor. Rate limited 10/min on the code endpoint with a 120/min backstop. Every authenticated request is appended to `admin_audit_log` |
 | **Passwords** | Werkzeug's default (scrypt, or pbkdf2 where scrypt is unavailable), 8–256 characters, enforced through one `auth.password_problem` so register/change/reset cannot disagree. Legacy SHA-256 rows upgrade on first login |
 | **Password reset** | 6-digit code, 15 minutes, single-use, exchanged for a one-shot token; **burned after 5 wrong attempts** (`password_resets.attempts`), so guessing is bounded per code and not merely per address. The reset revokes every session |
@@ -491,8 +496,13 @@ implementation against the published RFC 6238 test vectors.
   (`architecture/08`) would put a name on it and allow per-operator revocation. The
   table needs no schema change when that lands: `actor` is already a column.
 - **A leaked internal key can move credits for any user.** `/api/internal/*` is one key
-  for the whole brand, with no per-platform scoping — the key *is* the caller's identity.
-  Per-platform keys that can only touch their own users would be the next step.
+  for the whole brand: the key *is* the caller's identity, with no per-platform scoping.
+  Platforms do **not** need it — `POST /api/credits/spend` lets a platform spend with its
+  own key, attributed to its `client_id`, and only for a user it holds a credential for.
+  The internal key is now confined to SilverGate's own jobs, and the remaining exposure is
+  "any user", not "any user as any platform". Full per-user scoping (a platform may
+  *only* touch users it authenticated) still needs a durable user↔platform mapping and is
+  the next step.
 - **The email-verification link is a 24-hour bearer credential.** Whoever obtains the
   link (forwarded mail, a shared inbox, a link scanner) can mint a session for that
   account. Shortening `EMAIL_TOKEN_LIFETIME_HOURS` trades that against users who verify a
@@ -611,11 +621,12 @@ Set in the API project:
   in production.
 - **The simulation harness exercises every endpoint.** `sim/harness.py` boots the
   real Flask app against an in-memory PostgREST fake and fake Stripe/Resend clients,
-  then drives all 73 routes through realistic flows (registration → verification
+  then drives every route through realistic flows (registration → verification
   link → session, subscribe → webhook → allowance → usage bar, the platform SSO
-  exchange, the internal credit API, the streamer portal including a manager's
-  branch, the admin API, logout and account deletion). Run it with
-  `.simvenv/bin/python sim/harness.py`. It proves the application's own behaviour; it
-  is **not** a substitute for a smoke test against the real Supabase project and a real
-  Stripe test webhook, which is still outstanding. All three migrations are applied to
-  production as of 2026-09-22.
+  exchange and a keyed platform spend, the internal credit API, the streamer portal
+  including a manager's branch, the admin API, logout and account deletion). Run it
+  with `.simvenv/bin/python sim/harness.py`. It proves the application's own
+  behaviour; it is **not** a substitute for a smoke test against the real Supabase
+  project and a real Stripe test webhook, which is still outstanding. Migrations
+  002–005 are applied to production as of 2026-09-22; `006_transaction_service.sql`
+  is the only one still to apply, and only platform-spend attribution depends on it.
