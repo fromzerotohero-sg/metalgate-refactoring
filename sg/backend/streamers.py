@@ -84,8 +84,11 @@ def id_codes_for(supabase, streamer_ids) -> dict:
     queries.
     """
     mapping = {}
+    # `credentials` is keyed by `id_code`, not `id`: the paging order must name a
+    # column that actually exists, or PostgREST rejects the whole read.
     rows = pagination.fetch_in(
-        supabase, "credentials", "id_code, streamer_id", "streamer_id", streamer_ids
+        supabase, "credentials", "id_code, streamer_id", "streamer_id", streamer_ids,
+        order="id_code",
     )
     for row in rows:
         mapping[str(row["streamer_id"])] = row.get("id_code")
