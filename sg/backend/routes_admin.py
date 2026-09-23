@@ -103,17 +103,15 @@ def _totp_problem() -> tuple | None:
     """
     ``(response, status)`` when the second factor is missing or wrong, else None.
 
-    When `SG_ADMIN_TOTP_SECRET` is unset the admin surface is refused outright in
-    production — not with a 401, which would look like a wrong credential, but
-    with a 503 that says the surface is not configured. Development stays usable
-    without an authenticator app.
+    When `SG_ADMIN_TOTP_SECRET` is unset the surface runs single-factor: the
+    shared code alone opens it. The operator chose this trade-off explicitly, so
+    it is allowed in production too — and logged, because a leaked string is then
+    all it takes.
     """
     secret = current_app.config["ADMIN_TOTP_SECRET"]
 
     if not secret:
-        if current_app.config["IS_PRODUCTION"]:
-            logger.error("Admin request refused: SG_ADMIN_TOTP_SECRET is unset.")
-            return jsonify({"error": "The admin API is not configured"}), 503
+        logger.warning("SG_ADMIN_TOTP_SECRET is unset: admin request authorized by the shared code alone.")
         return None
 
     if not totp.verify(secret, request.headers.get("X-Admin-TOTP") or ""):
@@ -133,7 +131,8 @@ def admin_auth_required(f):
          before a credential is even examined.
       2. **The shared code**, header only. Accepting it in the query string would
          write it into access logs, browser history and `Referer` headers.
-      3. **A TOTP code**, so a leaked shared string is not by itself enough.
+      3. **A TOTP code**, but only when `SG_ADMIN_TOTP_SECRET` is set. Without a
+         secret the surface runs single-factor by explicit operator choice.
 
     On success it marks the request as authenticated, which is what the audit
     hook below records.
@@ -217,9 +216,6 @@ def admin_login():
         if not totp.verify(secret, provided):
             logger.warning("Rejected an admin login with an invalid TOTP code.")
             return jsonify({"error": "Invalid second factor"}), 401
-    elif current_app.config["IS_PRODUCTION"]:
-        logger.error("Admin login refused: SG_ADMIN_TOTP_SECRET is unset.")
-        return jsonify({"error": "The admin API is not configured"}), 503
 
     return jsonify({"message": "Admin authenticated"})
 
