@@ -1,3 +1,18 @@
+@import "tailwindcss";
+
+@theme {
+  --color-navy-900: #040a22;
+  --color-navy-800: #081232;
+  --color-navy-700: #0d1c4d;
+  --color-brand: #2563eb;
+  --color-brand-bright: #3b82f6;
+  --color-accent: #22d3ee;
+  --color-ink: #0f172a;
+  --color-muted: #64748b;
+  --color-line: #e3e9f4;
+  --color-surface: #f4f7fd;
+}
+
 :root {
   --navy-900: #040a22;
   --navy-800: #081232;

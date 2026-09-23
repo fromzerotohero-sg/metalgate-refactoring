@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import { adminApi, AdminApiError } from "@/src/lib/admin-api";
+import { useToast } from "./toast";
 
 export default function GrantCreditsForm({ userId, onGranted }: { userId: string; onGranted: () => void }) {
+  const toast = useToast();
   const [amount, setAmount] = useState("");
   const [days, setDays] = useState("");
   const [reason, setReason] = useState("");
@@ -15,6 +17,7 @@ export default function GrantCreditsForm({ userId, onGranted }: { userId: string
     const value = parseInt(amount, 10);
     if (!Number.isInteger(value) || value <= 0) {
       setMessage({ kind: "err", text: "Inserisci un numero di crediti valido." });
+      toast.error("Inserisci un numero di crediti valido.");
       return;
     }
     if (!window.confirm(`Accreditare ${value} crediti a questo utente?`)) return;
@@ -28,12 +31,15 @@ export default function GrantCreditsForm({ userId, onGranted }: { userId: string
         expires_in_days: days ? parseInt(days, 10) : undefined
       });
       setMessage({ kind: "ok", text: `${value} crediti accreditati.` });
+      toast.success(`${value} crediti accreditati.`);
       setAmount("");
       setDays("");
       setReason("");
       onGranted();
     } catch (err) {
-      setMessage({ kind: "err", text: err instanceof AdminApiError ? err.message : "Accredito fallito." });
+      const text = err instanceof AdminApiError ? err.message : "Accredito fallito.";
+      setMessage({ kind: "err", text });
+      toast.error(text);
     } finally {
       setBusy(false);
     }

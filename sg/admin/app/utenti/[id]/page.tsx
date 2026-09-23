@@ -13,6 +13,56 @@ import {
 } from "@/src/lib/admin-api";
 import StatCard from "@/src/components/admin/StatCard";
 import GrantCreditsForm from "@/src/components/admin/GrantCreditsForm";
+import DataTable, { type ColumnDef } from "@/src/components/admin/data-table";
+import Badge, { VerifiedBadge, type BadgeTone } from "@/src/components/admin/badge";
+import type { AdminTransaction } from "@/src/lib/admin-api";
+
+const TX_STATUS_TONES: Record<string, BadgeTone> = {
+  completed: "ok",
+  succeeded: "ok",
+  paid: "ok",
+  pending: "warn",
+  failed: "danger",
+  canceled: "danger",
+  refunded: "info"
+};
+
+function txStatusBadge(status?: string) {
+  if (!status) return "—";
+  return <Badge tone={TX_STATUS_TONES[status] ?? "neutral"}>{status}</Badge>;
+}
+
+const TX_COLUMNS: ColumnDef<AdminTransaction, unknown>[] = [
+  {
+    accessorKey: "timestamp",
+    header: "Data",
+    sortingFn: "datetime",
+    cell: ({ row }) => formatDate(row.original.timestamp)
+  },
+  { accessorKey: "type", header: "Tipo", cell: ({ row }) => row.original.type || "—" },
+  {
+    accessorKey: "description",
+    header: "Descrizione",
+    enableSorting: false,
+    cell: ({ row }) => row.original.description || "—"
+  },
+  {
+    accessorKey: "amount",
+    header: "Importo",
+    meta: { numeric: true },
+    cell: ({ row }) => (
+      <span className={row.original.amount >= 0 ? "admin-pos" : "admin-neg"}>
+        {row.original.amount >= 0 ? "+" : ""}
+        {formatNumber(row.original.amount)}
+      </span>
+    )
+  },
+  {
+    accessorKey: "status",
+    header: "Stato",
+    cell: ({ row }) => txStatusBadge(row.original.status)
+  }
+];
 
 export default function UserDetailPage() {
   const params = useParams<{ id: string }>();
@@ -43,7 +93,7 @@ export default function UserDetailPage() {
       <div className="admin-user-head">
         <h1 className="admin-title">{user.username || user.email}</h1>
         {user.tag && <span className="admin-user-tag">#{user.tag}</span>}
-        {user.email_verified ? <span className="admin-badge ok">Verificato</span> : <span className="admin-badge warn">Non verificato</span>}
+        <VerifiedBadge verified={user.email_verified} />
       </div>
 
       <div className="admin-stat-grid">
@@ -89,36 +139,8 @@ export default function UserDetailPage() {
       </section>
 
       <section className="admin-card">
-        <h2>Ultime transazioni</h2>
-        {transactions.length ? (
-          <div className="admin-table-wrap">
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>Data</th>
-                  <th>Tipo</th>
-                  <th>Descrizione</th>
-                  <th className="num">Importo</th>
-                </tr>
-              </thead>
-              <tbody>
-                {transactions.map((tx) => (
-                  <tr key={tx.id}>
-                    <td>{formatDate(tx.timestamp)}</td>
-                    <td>{tx.type || "—"}</td>
-                    <td>{tx.description || "—"}</td>
-                    <td className={`num ${tx.amount >= 0 ? "admin-pos" : "admin-neg"}`}>
-                      {tx.amount >= 0 ? "+" : ""}
-                      {formatNumber(tx.amount)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <p className="admin-empty">Nessuna transazione.</p>
-        )}
+        <h2>Transazioni</h2>
+        <DataTable mode="client" columns={TX_COLUMNS} rows={transactions} perPage={10} emptyMessage="Nessuna transazione." />
       </section>
 
       <section className="admin-card">

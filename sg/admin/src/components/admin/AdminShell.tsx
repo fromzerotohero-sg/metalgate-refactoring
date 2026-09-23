@@ -2,13 +2,49 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { AdminProvider, useAdmin } from "@/src/lib/admin-auth";
+import { adminChatApi } from "@/src/lib/admin-chat-api";
 import LoginGate from "./LoginGate";
+import { ToastProvider } from "./toast";
 
 const NAV_ITEMS = [
   { href: "/", label: "Panoramica" },
-  { href: "/utenti", label: "Utenti" }
+  { href: "/utenti", label: "Utenti" },
+  { href: "/streamers", label: "Streamer" },
+  { href: "/transazioni", label: "Transazioni" },
+  { href: "/chat", label: "Chat" }
 ];
+
+function ChatUnreadBadge() {
+  const [unread, setUnread] = useState(0);
+
+  useEffect(() => {
+    let stopped = false;
+    const tick = () => {
+      if (document.hidden) return;
+      adminChatApi
+        .unreadCount()
+        .then((data) => {
+          if (!stopped) setUnread(data.unread);
+        })
+        .catch(() => {});
+    };
+    tick();
+    const id = setInterval(tick, 30000);
+    return () => {
+      stopped = true;
+      clearInterval(id);
+    };
+  }, []);
+
+  if (unread <= 0) return null;
+  return (
+    <span className="ml-1.5 inline-flex min-w-[18px] items-center justify-center rounded-full bg-accent px-1.5 py-0.5 text-[11px] font-bold leading-none text-navy-900">
+      {unread > 99 ? "99+" : unread}
+    </span>
+  );
+}
 
 function Shell({ children }: { children: React.ReactNode }) {
   const { status, logout } = useAdmin();
@@ -37,6 +73,7 @@ function Shell({ children }: { children: React.ReactNode }) {
             return (
               <Link key={item.href} href={item.href} className={`admin-nav-tab${active ? " active" : ""}`}>
                 {item.label}
+                {item.href === "/chat" && <ChatUnreadBadge />}
               </Link>
             );
           })}
@@ -53,7 +90,9 @@ function Shell({ children }: { children: React.ReactNode }) {
 export default function AdminShell({ children }: { children: React.ReactNode }) {
   return (
     <AdminProvider>
-      <Shell>{children}</Shell>
+      <ToastProvider>
+        <Shell>{children}</Shell>
+      </ToastProvider>
     </AdminProvider>
   );
 }
