@@ -2,8 +2,9 @@
 
 Standalone Next.js admin dashboard for SilverGate operators. It talks only to
 the `/api/admin/*` routes, authenticating every request with the shared admin
-code (`X-Admin-Code`) and, when `SG_ADMIN_TOTP_SECRET` is set on the backend,
-a TOTP code (`X-Admin-TOTP`).
+code (`X-Admin-Code`). The API also supports a TOTP second factor
+(`SG_ADMIN_TOTP_SECRET`); this panel sends none, so the backend must run
+single-factor — its current, deliberate configuration.
 
 - Overview: KPI cards, 30-day activity chart, latest transactions.
 - Users: search, status filters, pagination, per-user 360° detail with profile,
@@ -28,5 +29,5 @@ npm run typecheck
 npm run build
 ```
 
-The admin code is held in `sessionStorage` (cleared when the tab closes), the
-TOTP only in memory. Neither is ever put in the URL or rendered into the page.
+The admin code is held in `sessionStorage` (cleared when the tab closes) and is
+never put in the URL or rendered into the page.

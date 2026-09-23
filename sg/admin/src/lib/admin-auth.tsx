@@ -6,7 +6,6 @@ import {
   clearAdminCredentials,
   loadStoredAdminCode,
   onAdminUnauthorized,
-  setAdminTotp,
   storeAdminCode
 } from "./admin-api";
 
@@ -14,8 +13,7 @@ type AdminStatus = "checking" | "anon" | "authed";
 
 type AdminContextValue = {
   status: AdminStatus;
-  hasStoredCode: boolean;
-  login: (code: string, totp: string) => Promise<void>;
+  login: (code: string) => Promise<void>;
   logout: () => void;
 };
 
@@ -23,43 +21,33 @@ const AdminContext = createContext<AdminContextValue | null>(null);
 
 export function AdminProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<AdminStatus>("checking");
-  const [hasStoredCode, setHasStoredCode] = useState(false);
 
   useEffect(() => {
-    // Il TOTP non è persistibile (scade in 30s): ad ogni caricamento serve almeno
-    // il codice authenticator. Se il codice admin è in sessionStorage il gate
-    // chiede solo quello.
-    setHasStoredCode(Boolean(loadStoredAdminCode()));
-    setStatus("anon");
+    // L'accesso è a fattore singolo (solo codice admin): se un codice è già in
+    // sessionStorage si entra direttamente, così un ricaricamento non lo richiede di
+    // nuovo. Non ci si fida del client — ogni endpoint ri-verifica il codice lato
+    // server, e un rifiuto riporta qui al gate.
+    setStatus(loadStoredAdminCode() ? "authed" : "anon");
     onAdminUnauthorized(() => {
-      // TOTP scaduto o rifiutato: si torna al gate mantenendo il codice admin.
-      setAdminTotp(null);
+      // Codice rifiutato (ruotato o revocato): si torna al gate per reinserirlo.
       setStatus("anon");
     });
   }, []);
 
-  const login = useCallback(async (code: string, totp: string) => {
-    // Sul percorso di ri-autenticazione il campo del codice è nascosto (il codice è
-    // già in sessionStorage), quindi `code` arriva vuoto: inviarlo così com'è
-    // manderebbe `code: ""` e fallirebbe sempre con "Invalid admin code". Va
-    // inviato il codice memorizzato.
-    const effectiveCode = code || loadStoredAdminCode() || "";
-    await adminApi.login(effectiveCode, totp);
-    storeAdminCode(effectiveCode);
-    setAdminTotp(totp || null);
-    setHasStoredCode(true);
+  const login = useCallback(async (code: string) => {
+    await adminApi.login(code);
+    storeAdminCode(code);
     setStatus("authed");
   }, []);
 
   const logout = useCallback(() => {
     clearAdminCredentials();
-    setHasStoredCode(false);
     setStatus("anon");
   }, []);
 
   const value = useMemo(
-    () => ({ status, hasStoredCode, login, logout }),
-    [status, hasStoredCode, login, logout]
+    () => ({ status, login, logout }),
+    [status, login, logout]
   );
 
   return <AdminContext.Provider value={value}>{children}</AdminContext.Provider>;

@@ -1,7 +1,7 @@
 // Client per l'API admin SilverGate. Passa dal proxy same-origin /api/*
-// (next.config.mjs), quindi niente CORS. Autenticazione: header X-Admin-Code +
-// X-Admin-TOTP su ogni richiesta. Il codice admin è persistito in sessionStorage
-// (muore chiudendo la tab); il TOTP resta solo in memoria perché scade in 30s.
+// (next.config.mjs), quindi niente CORS. Autenticazione: header X-Admin-Code su
+// ogni richiesta. Il codice admin è persistito in sessionStorage (muore chiudendo
+// la tab).
 
 const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "/api").replace(/\/$/, "");
 const API_BASE = `${API_URL}/admin`;
@@ -14,7 +14,6 @@ export class AdminApiError extends Error {
 }
 
 let adminCode: string | null = null;
-let adminTotp: string | null = null;
 let unauthorizedHandler: (() => void) | null = null;
 
 export function storeAdminCode(code: string) {
@@ -29,13 +28,8 @@ export function loadStoredAdminCode(): string | null {
   return adminCode;
 }
 
-export function setAdminTotp(totp: string | null) {
-  adminTotp = totp;
-}
-
 export function clearAdminCredentials() {
   adminCode = null;
-  adminTotp = null;
   if (typeof window !== "undefined") window.sessionStorage.removeItem(CODE_STORAGE_KEY);
 }
 
@@ -47,7 +41,6 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   if (adminCode) headers.set("X-Admin-Code", adminCode);
-  if (adminTotp) headers.set("X-Admin-TOTP", adminTotp);
 
   const response = await fetch(`${API_BASE}${path}`, { ...init, headers });
   const payload = await response.json().catch(() => ({}));
@@ -120,11 +113,11 @@ export type ActivityPoint = { date: string; active_users: number };
 export type UsersQuery = { page?: number; per_page?: number; search?: string; status?: string };
 
 export const adminApi = {
-  login: async (code: string, totp: string): Promise<void> => {
+  login: async (code: string): Promise<void> => {
     const response = await fetch(`${API_BASE}/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code, totp })
+      body: JSON.stringify({ code })
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new AdminApiError(response.status, payload.error ?? "Accesso fallito");

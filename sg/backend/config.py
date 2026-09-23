@@ -113,6 +113,7 @@ _DEFAULT_CORS_ORIGINS = [
     "https://silver.fromzerotohero.io",
     "https://fromzerotohero.io",
     "https://efootball.fromzerotohero.io",
+    "https://tornei.fromzerotohero.io",
     "http://localhost",
     "http://localhost:3000",
     "http://localhost:3001",
@@ -130,6 +131,12 @@ _DEFAULT_PLATFORMS = {
         "name": "eFootball Coaching",
         "origins": ["https://efootball.fromzerotohero.io"],
         "redirect_uris": ["https://efootball.fromzerotohero.io/auth/callback"],
+        "api_key": "",
+    },
+    "tornei": {
+        "name": "Arena Tornei",
+        "origins": ["https://tornei.fromzerotohero.io"],
+        "redirect_uris": ["https://tornei.fromzerotohero.io/auth/callback"],
         "api_key": "",
     },
     "fzth": {

@@ -47,6 +47,11 @@ Content-Security-Policy.
   script di Next e rende ogni route dinamica. In `next build` tutte le route
   risulteranno `ƒ (Dynamic)`: è voluto, una pagina prerenderizzata porterebbe un nonce
   vecchio.
+- **`app/layout.tsx`** monta anche il tag di Metricool via `next/script`, passandogli il
+  nonce letto da `x-nonce`. Senza nonce `'strict-dynamic'` lo bloccherebbe. Il `be.js`
+  che il tag si carica da sé non va elencato in `script-src` (lo carica uno script già
+  fidato), ma la beacon e il pixel a cui riporta escono da questo origin: per questo
+  `connect-src` e `img-src` includono `https://*.metricool.com`.
 - **`next.config.mjs`** imposta HSTS (l'header dell'API copre solo il suo host,
   `v2.…`; HSTS è host-scoped, quindi questo origin ha bisogno del suo),
   `X-Content-Type-Options`,
@@ -66,7 +71,7 @@ white screen).
 ```
 {
   key: "Content-Security-Policy",
-  value: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://v2.fromzerotohero.io; form-action 'self'; frame-ancestors 'none'; base-uri 'self'; object-src 'none'; upgrade-insecure-requests"
+  value: "default-src 'self'; script-src 'self' 'unsafe-inline' https://tracker.metricool.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.metricool.com; font-src 'self' data:; connect-src 'self' https://v2.fromzerotohero.io https://*.metricool.com; form-action 'self'; frame-ancestors 'none'; base-uri 'self'; object-src 'none'; upgrade-insecure-requests"
 }
 ```
 

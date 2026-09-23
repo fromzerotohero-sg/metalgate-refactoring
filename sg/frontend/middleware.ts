@@ -41,6 +41,17 @@ const API_ORIGIN = API_URL_GLOBAL.startsWith("/")
   ? ""
   : API_URL_GLOBAL.replace(/\/api\/?$/, "").replace(/\/$/, "");
 
+/**
+ * Where Metricool's site tag (see `app/layout.tsx`) reports to.
+ *
+ * Its own `be.js` is pulled in without a host entry: the tag that loads it carries
+ * the nonce, and `'strict-dynamic'` trusts whatever a trusted script appends. What
+ * does need naming is the beacon and the fallback tracking pixel, which leave this
+ * origin. Wildcarded because Metricool shards across subdomains and the tag is
+ * theirs to change.
+ */
+const METRICOOL_ORIGIN = "https://*.metricool.com";
+
 function buildPolicy(nonce: string, isDev: boolean) {
   return [
     "default-src 'self'",
@@ -49,12 +60,12 @@ function buildPolicy(nonce: string, isDev: boolean) {
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ""}`,
     "style-src 'self' 'unsafe-inline'",
     // `data:` and `blob:` for inline SVG/canvas; the platform card images are
-    // same-origin files under /public.
-    "img-src 'self' data: blob:",
+    // same-origin files under /public. Metricool may fall back to a tracking pixel.
+    `img-src 'self' data: blob: ${METRICOOL_ORIGIN}`,
     "font-src 'self' data:",
-    // The only network origin this app talks to — plus, when the API is served
-    // from this origin, nothing at all.
-    `connect-src 'self'${API_ORIGIN ? ` ${API_ORIGIN}` : ""}`,
+    // This app's own API — plus, when the API is served from this origin, nothing at
+    // all — and the Metricool beacon the tag in `app/layout.tsx` writes to.
+    `connect-src 'self'${API_ORIGIN ? ` ${API_ORIGIN}` : ""} ${METRICOOL_ORIGIN}`,
     "form-action 'self'",
     "frame-ancestors 'none'",
     "base-uri 'self'",

@@ -444,7 +444,7 @@ What is enforced, and where.
 | **Access tokens** | HS256, 10 minutes, carrying the session id so revocation still applies. Distinguished from streamer tokens only by the `type` claim, which is checked |
 | **Internal API** | `X-Internal-API-Key`, constant-time compared, header only (a query-string secret would land in logs, history and `Referer`s). Brand-wide: for SilverGate's own jobs, never given to a platform |
 | **Platform API** | `X-Platform-Key`, one per registered platform, constant-time compared. Resolves to a `client_id`, so an action is attributable to the platform that took it, and `POST /api/credits/spend` records that in `transactions.service`. A platform holds this and nothing else |
-| **Admin API** | Three independent locks. **1)** Source address against `SG_ADMIN_IP_ALLOWLIST` (opt-in, fails closed), checked before any credential. **2)** `ADMIN_CODE`, constant-time, header only, no source default. **3)** a **TOTP second factor** (`SG_ADMIN_TOTP_SECRET`, RFC 6238, compatible with any authenticator app) so a leaked string is not enough on its own. Without a TOTP secret the admin API **closes itself** in production (503) rather than falling back to one factor. Rate limited 10/min on the code endpoint with a 120/min backstop. Every authenticated request is appended to `admin_audit_log` |
+| **Admin API** | Three independent locks. **1)** Source address against `SG_ADMIN_IP_ALLOWLIST` (opt-in, fails closed), checked before any credential. **2)** `ADMIN_CODE`, constant-time, header only, no source default. **3)** an **optional TOTP second factor** (`SG_ADMIN_TOTP_SECRET`, RFC 6238, compatible with any authenticator app) so a leaked string is not enough on its own. When the secret is unset the surface runs single-factor — by explicit operator choice, warned about at startup and on every authenticated request. Rate limited 10/min on the code endpoint with a 120/min backstop. Every authenticated request is appended to `admin_audit_log` |
 | **Passwords** | Werkzeug's default (scrypt, or pbkdf2 where scrypt is unavailable), 8–256 characters, enforced through one `auth.password_problem` so register/change/reset cannot disagree. Legacy SHA-256 rows upgrade on first login |
 | **Password reset** | 6-digit code, 15 minutes, single-use, exchanged for a one-shot token; **burned after 5 wrong attempts** (`password_resets.attempts`), so guessing is bounded per code and not merely per address. The reset revokes every session |
 | **Brute force** | flask-limiter on login, register, reset, verification resend and the whole admin surface. Production refuses to start with the in-memory store (below) |
@@ -468,8 +468,9 @@ python totp.py
 SG_ADMIN_IP_ALLOWLIST=203.0.113.7,198.51.100.0/24   # operator addresses
 ```
 
-- No `SG_ADMIN_TOTP_SECRET` in production → every admin request gets **503**, not a
-  fallback to the shared code alone. The rest of the API is unaffected.
+- No `SG_ADMIN_TOTP_SECRET` in production → the admin API runs **single-factor**: the
+  shared code alone opens a surface that can read every user and move credits. Set the
+  secret to require the second factor again.
 - No `SG_ADMIN_IP_ALLOWLIST` → a warning at startup; the address check is opt-in
   because a dynamic operator IP would otherwise lock the operator out.
 - A malformed allowlist entry is refused, not ignored: a typo must not widen access.
@@ -570,7 +571,8 @@ Set in the API project:
 - `SG_RATELIMIT_STORAGE_URI` — a shared store (e.g. `rediss://…`). The default
   `memory://` enforces nothing across serverless instances, and production
   refuses to start with it.
-- `SG_ADMIN_TOTP_SECRET` — without it the whole admin API answers 503.
+- `SG_ADMIN_TOTP_SECRET` — optional; without it the admin API runs single-factor
+  (the current deployment's choice).
 - `SG_CORS_ORIGINS` and `SG_PLATFORMS` for the real frontends.
 - `STRIPE_PRICE_LITE` / `_PRO` / `_ULTRA`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`.
 - `RES_API_KEY` and `EMAIL_FROM` on a domain verified in Resend.
