@@ -79,6 +79,10 @@ input, select, textarea { font-family: inherit; }
 .admin-gate img { margin: 0 auto 10px; display: block; }
 .admin-gate form { text-align: left; }
 .admin-gate .btn { width: 100%; justify-content: center; }
+.admin-gate-alt {
+  align-self: flex-start; color: var(--blue); font-size: 13px; font-weight: 700;
+}
+.admin-gate-alt:hover { text-decoration: underline; }
 
 .admin-shell { min-height: 100vh; background: var(--bg-light); }
 .admin-topbar {

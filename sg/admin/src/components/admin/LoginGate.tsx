@@ -6,7 +6,13 @@ import { useAdmin } from "@/src/lib/admin-auth";
 
 function errorMessage(error: unknown): string {
   if (error instanceof AdminApiError) {
-    if (error.status === 401) return "Codice admin o codice authenticator non valido.";
+    if (error.status === 401) {
+      // L'API distingue i due fattori; appiattirli su un solo messaggio fa cercare
+      // il problema dalla parte sbagliata (codice admin vs authenticator).
+      if (/second factor/i.test(error.message)) return "Codice authenticator non valido o scaduto.";
+      if (/admin code/i.test(error.message)) return "Codice admin non valido.";
+      return "Codice admin o codice authenticator non valido.";
+    }
     if (error.status === 403) return "Accesso negato da questo indirizzo IP.";
     if (error.status === 429) return "Troppi tentativi. Riprova tra un minuto.";
     if (error.status === 503) return "Il pannello non è configurato sul server.";
@@ -20,6 +26,10 @@ export default function LoginGate() {
   const [totp, setTotp] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Con un codice già memorizzato il campo è nascosto; "Usa un altro codice" lo
+  // riapre, così un codice ruotato non lascia l'operatore chiuso fuori.
+  const [wantsNewCode, setWantsNewCode] = useState(false);
+  const showCode = !hasStoredCode || wantsNewCode;
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -46,7 +56,7 @@ export default function LoginGate() {
             : "Area riservata. Inserisci il codice admin per entrare."}
         </p>
         <form onSubmit={submit}>
-          {!hasStoredCode && (
+          {showCode && (
             <label className="field">
               <span className="field-label">Codice admin</span>
               <span className="field-input">
@@ -76,12 +86,17 @@ export default function LoginGate() {
               />
             </span>
           </label>
+          {hasStoredCode && !wantsNewCode && (
+            <button type="button" className="admin-gate-alt" onClick={() => setWantsNewCode(true)}>
+              Usa un altro codice
+            </button>
+          )}
           {error && (
             <p className="admin-error" role="alert">
               {error}
             </p>
           )}
-          <button type="submit" className="btn btn-primary" disabled={busy || (!hasStoredCode && !code) || (totp.length > 0 && totp.length !== 6)}>
+          <button type="submit" className="btn btn-primary" disabled={busy || (showCode && !code) || (totp.length > 0 && totp.length !== 6)}>
             {busy ? "Verifica…" : "Entra"}
           </button>
         </form>

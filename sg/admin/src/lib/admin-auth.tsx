@@ -39,8 +39,13 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = useCallback(async (code: string, totp: string) => {
-    await adminApi.login(code, totp);
-    storeAdminCode(code);
+    // Sul percorso di ri-autenticazione il campo del codice è nascosto (il codice è
+    // già in sessionStorage), quindi `code` arriva vuoto: inviarlo così com'è
+    // manderebbe `code: ""` e fallirebbe sempre con "Invalid admin code". Va
+    // inviato il codice memorizzato.
+    const effectiveCode = code || loadStoredAdminCode() || "";
+    await adminApi.login(effectiveCode, totp);
+    storeAdminCode(effectiveCode);
     setAdminTotp(totp || null);
     setHasStoredCode(true);
     setStatus("authed");
