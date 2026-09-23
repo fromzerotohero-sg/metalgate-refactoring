@@ -133,6 +133,12 @@ cannot be debugged — the frontend is expected to render the bar and ignore the
 allowance and moved on to temporary credits reads above 100% (`overfilled: true`).
 That is the intended signal.
 
+**A free user still gets a bar.** With no active plan there is no allowance, so
+`usage.percent` is measured against the bonus credits the user holds
+(`credits_used + remaining`, reported as `usage.credits_allowance`) instead of
+collapsing to zero. A free account therefore renders the same progress bar as a paid
+one — it just never reads `overfilled`, because there is no allowance to exceed.
+
 ### `GET /api/credits` (alias `/api/plan/usage`)
 
 One payload, used by the dashboard, by `/api/me`, and by platforms through the

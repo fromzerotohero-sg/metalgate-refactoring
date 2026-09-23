@@ -201,10 +201,23 @@ def summarize(supabase, user: dict) -> dict:
     plan = public(plan_id) if is_active else None
 
     balances = credits.get_balances(user)
-    allowance = plan["credits_per_period"] if plan else 0
     used = int(user.get("credits_used_current_period") or 0)
+    remaining = balances["credits_balance"] + balances["temp_credits"]
 
-    percent = round(used / allowance * 100, 1) if allowance else 0.0
+    if plan:
+        # A paid period: the bar measures consumption against the plan allowance,
+        # and going past it is the "now on bonus credits" signal.
+        pool = plan["credits_per_period"]
+        overfilled = bool(pool) and used > pool
+    else:
+        # No active plan, so there is no allowance to measure against. The credits
+        # the user *does* hold — a signup bonus, a referral, an admin grant — are
+        # the pool, and the bar measures progress through them. Without this a free
+        # user saw a flat 0% and no bar at all, even while sitting on bonus credits.
+        pool = used + remaining
+        overfilled = False
+
+    percent = round(used / pool * 100, 1) if pool else 0.0
     threshold = current_app.config["UPGRADE_CTA_THRESHOLD_PERCENT"]
 
     return {
@@ -212,9 +225,11 @@ def summarize(supabase, user: dict) -> dict:
         "usage": {
             "percent": percent,
             # The bar goes past full when temporary credits have been spent.
-            "overfilled": bool(allowance) and used > allowance,
+            "overfilled": overfilled,
             "credits_used": used,
-            "credits_allowance": allowance,
+            # For a paid user this is the plan allowance; for a free user it is the
+            # bonus-credit pool, so `percent` is meaningful in both cases.
+            "credits_allowance": pool,
         },
         "credits": {
             "plan_remaining": balances["credits_balance"],

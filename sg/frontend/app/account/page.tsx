@@ -53,6 +53,9 @@ export default function AccountPage() {
   const usage = data?.credits?.usage;
   const upgrade = data?.credits?.upgrade;
   const percent = typeof usage?.percent === "number" ? Math.min(100, Math.max(0, usage.percent)) : 0;
+  // A free user has no plan allowance, so the API measures the bar against their
+  // bonus credits instead — and the fill is amber for the same reason: it is all bonus.
+  const hasBonusCredits = (usage?.credits_allowance ?? 0) > 0;
   const href = (path: string) => (preview ? previewHref(path) : path);
   const dateFmt = (value?: string) => value ? new Date(value).toLocaleDateString(locale === "en" ? "en-GB" : locale === "es" ? "es-ES" : "it-IT") : "—";
 
@@ -165,6 +168,13 @@ export default function AccountPage() {
                 </>
               ) : (
                 <>
+                  {hasBonusCredits && (
+                    <>
+                      <div className="progress-track"><div className="progress-fill bonus" style={{ width: `${percent}%` }} /></div>
+                      <p className="progress-label">{Math.round(percent)}% {t("account.used")}</p>
+                      <p className="card-note">{t("account.bonusOnly")}</p>
+                    </>
+                  )}
                   <p className="card-note" style={{ marginTop: 4 }}><strong>{t("account.noPlan")}</strong> — {t("account.noPlanSub")}</p>
                   <div className="card-actions">
                     {/*
