@@ -17,10 +17,11 @@ import logging
 import os
 import sys
 
+import httpx
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-from supabase import create_client
+from supabase import ClientOptions, create_client
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 load_dotenv(os.environ.get("ENV_FILE", ".env"))
@@ -39,7 +40,24 @@ def _build_supabase_client():
     if not url or not key:
         # create_app() refuses to start without these; this only guards import.
         return None
-    return create_client(url, key)
+
+    # postgrest-py creates its HTTP client with `http2=True`. On serverless hosting
+    # that is a trap: a warm instance holds a pooled HTTP/2 connection, the peer
+    # eventually sends GOAWAY, and the next call reuses the doomed connection and
+    # dies with `ConnectionTerminated (last_stream_id=…)` — a 500 on any endpoint
+    # that touches the database, with nothing wrong with the query itself.
+    #
+    # The fix belongs here, once, rather than as a retry in every route. HTTP/1.1
+    # pooling does not have this failure mode, and `httpx` is already a pinned
+    # dependency of the Supabase client, so disabling HTTP/2 costs nothing.
+    http_client = httpx.Client(
+        http2=False,
+        follow_redirects=True,
+        # postgrest-py's own default is DEFAULT_POSTGREST_CLIENT_TIMEOUT (120s), so
+        # supplying our own client must not quietly shorten every database call.
+        timeout=httpx.Timeout(120.0),
+    )
+    return create_client(url, key, ClientOptions(httpx_client=http_client))
 
 
 supabase = _build_supabase_client()
