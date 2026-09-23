@@ -437,9 +437,9 @@ class Config:
         # development default.
         if cls.IS_PRODUCTION:
             if not cls.ADMIN_TOTP_SECRET:
-                logger.error(
-                    "SG_ADMIN_TOTP_SECRET is unset: the admin API will refuse every "
-                    "request until it is set. Generate one with `python totp.py`."
+                logger.warning(
+                    "SG_ADMIN_TOTP_SECRET is unset: the admin API runs single-factor "
+                    "(shared code only). Set it to require an authenticator code too."
                 )
             if not cls.ADMIN_IP_ALLOWLIST:
                 logger.warning(
