@@ -1478,6 +1478,80 @@ def get_user_detail(user_id):
         return jsonify({"error": "Failed to fetch user details"}), 500
 
 
+# The timeline page size ceiling — a single user can accumulate thousands of
+# events, and the admin UI pages through them with `before`.
+MAX_USER_EVENTS_PAGE = 200
+
+
+@admin_bp.route("/users/<user_id>/events", methods=["GET"])
+@admin_auth_required
+def get_user_events(user_id):
+    """
+    A user's activity timeline, newest first: every event the platform apps
+    reported through `POST /api/internal/events`.
+
+    Keyset-paginated by event id (`before=<id>` returns older rows), since the
+    timeline is append-only and offset paging would drift under concurrent
+    writes. `limit` defaults to 50 and is clamped to 200.
+
+    The `user_events` table comes from migration 009; on a database without it
+    this answers 200 with an empty list and `events_available: false` rather
+    than a 500, so the admin UI can tell "not migrated" from "nothing reported
+    yet" (same convention as the email-campaign history).
+    """
+    try:
+        supabase = db.require_client()
+        limit = max(1, min(MAX_USER_EVENTS_PAGE, _safe_int(request.args.get("limit"), 50)))
+
+        before = request.args.get("before")
+        if before is not None:
+            before = _safe_int(before, -1)
+            if before < 0:
+                return jsonify({"error": "before must be an integer event id"}), 400
+
+        user = (
+            supabase.table("users").select("id").eq("id", user_id).limit(1).execute()
+        )
+        if not user.data:
+            return jsonify({"error": "User not found"}), 404
+
+        try:
+            query = (
+                supabase.table("user_events")
+                .select("id, platform, event_type, label, meta, created_at")
+                .eq("user_id", user_id)
+            )
+            if before is not None:
+                query = query.lt("id", before)
+            result = (
+                query.order("created_at", desc=True)
+                .order("id", desc=True)
+                .limit(limit + 1)  # one extra row answers "is there a next page?"
+                .execute()
+            )
+        except Exception as exc:
+            logger.warning(
+                "user_events query failed (has migration 009 been applied?): %s", exc
+            )
+            return jsonify(
+                {"events": [], "has_more": False, "events_available": False}
+            )
+
+        rows = list(result.data or [])
+        has_more = len(rows) > limit
+        return jsonify(
+            {
+                "events": rows[:limit],
+                "has_more": has_more,
+                "events_available": True,
+            }
+        )
+
+    except Exception as e:
+        logger.error("Admin user events error: %s", e)
+        return jsonify({"error": "Failed to fetch user events"}), 500
+
+
 @admin_bp.route("/transactions", methods=["GET"])
 @admin_auth_required
 def get_recent_transactions():

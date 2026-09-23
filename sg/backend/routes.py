@@ -17,7 +17,9 @@ never be handed a long-lived credential.
 
 from __future__ import annotations
 
+import json
 import logging
+import re
 import secrets
 import string
 import uuid
@@ -826,6 +828,126 @@ def _coerce_credit_request(user_id, amount):
         return None, (jsonify({"error": "Amount must be a positive integer"}), 400)
 
     return amount, None
+
+
+# ── User activity events (server-to-server) ─────────────────────────────────
+
+# snake_case, ≤64 chars: lowercase words separated by single underscores. The
+# column check caps the length too; the regex is what rejects "Roster Updated".
+_EVENT_TYPE_RE = re.compile(r"[a-z0-9]+(_[a-z0-9]+)*")
+MAX_EVENT_TYPE_LENGTH = 64
+MAX_EVENT_LABEL_LENGTH = 120
+# `meta` is stored verbatim for the admin timeline, never interpreted — but it
+# lands in our database, so its serialized size is bounded.
+MAX_EVENT_META_BYTES = 4096
+
+
+@bp.route("/internal/events", methods=["POST"])
+@limiter.limit("60 per minute")
+@platform_key_required
+def report_user_event():
+    """
+    Record something a user did on the calling platform ("roster updated",
+    "build saved"), for the admin panel's per-user activity timeline.
+
+    Auth is the platform API key (`X-Platform-Key`), exactly like
+    `/credits/spend`; the caller's client_id is stored on the row, so the
+    timeline can say *which* app reported the event. The brand-wide internal
+    key is accepted too and is recorded as `internal`.
+
+    The user is identified by `user_id` (UUID) or `email`; when both are sent
+    they must resolve to the same account, so a client bug cannot file an event
+    against the wrong user. `meta` is stored as-is for display — it is never
+    trusted or interpreted, only size-capped.
+    """
+    data = request.get_json(silent=True) or {}
+    user_id = data.get("user_id")
+    email = (data.get("email") or "").strip().lower()
+    event_type = (data.get("event_type") or "").strip()
+    label = data.get("label")
+    meta = data.get("meta")
+    occurred_at = data.get("occurred_at")
+
+    if not user_id and not email:
+        return jsonify({"error": "user_id or email is required"}), 400
+
+    if user_id:
+        user_id = str(user_id).strip()
+        try:
+            uuid.UUID(user_id)
+        except ValueError:
+            return jsonify({"error": "user_id must be a UUID"}), 400
+
+    if not event_type:
+        return jsonify({"error": "event_type is required"}), 400
+    if len(event_type) > MAX_EVENT_TYPE_LENGTH or not _EVENT_TYPE_RE.fullmatch(event_type):
+        return jsonify(
+            {"error": "event_type must be snake_case, at most 64 characters"}
+        ), 400
+
+    if label is not None:
+        if not isinstance(label, str):
+            return jsonify({"error": "label must be a string"}), 400
+        label = label.strip() or None
+        if label and len(label) > MAX_EVENT_LABEL_LENGTH:
+            return jsonify({"error": "label must be at most 120 characters"}), 400
+
+    if meta is None:
+        meta = {}
+    elif not isinstance(meta, dict):
+        return jsonify({"error": "meta must be a JSON object"}), 400
+    # Re-serialize rather than trusting the inbound text: this both bounds the
+    # stored payload and drops anything that is not plain JSON data.
+    if len(json.dumps(meta, ensure_ascii=False, default=str).encode("utf-8")) > MAX_EVENT_META_BYTES:
+        return jsonify({"error": "meta must be at most 4 KB when serialized"}), 400
+
+    if occurred_at is not None:
+        try:
+            created_at = sessions.to_iso(sessions.parse_dt(occurred_at))
+        except (TypeError, ValueError):
+            return jsonify({"error": "occurred_at must be an ISO-8601 timestamp"}), 400
+    else:
+        created_at = sessions.now_iso()
+
+    client = db.require_client()
+    if user_id and email:
+        found = (
+            client.table("users").select("id, email").eq("id", user_id).execute()
+        )
+        if not found.data or (found.data[0].get("email") or "").lower() != email:
+            return jsonify({"error": "User not found"}), 404
+        resolved_id = found.data[0]["id"]
+    elif user_id:
+        found = client.table("users").select("id").eq("id", user_id).execute()
+        if not found.data:
+            return jsonify({"error": "User not found"}), 404
+        resolved_id = found.data[0]["id"]
+    else:
+        found = client.table("users").select("id").eq("email", email).execute()
+        if not found.data:
+            return jsonify({"error": "User not found"}), 404
+        resolved_id = found.data[0]["id"]
+
+    row = {
+        "user_id": resolved_id,
+        "platform": getattr(g, "platform_client_id", None) or "internal",
+        "event_type": event_type,
+        "label": label,
+        "meta": meta,
+        "created_at": created_at,
+    }
+
+    try:
+        inserted = client.table("user_events").insert(row).execute()
+        saved = inserted.data[0]
+        return jsonify({"id": saved["id"], "created_at": saved["created_at"]}), 201
+    except Exception as exc:
+        logger.error(
+            "User event insert failed for %s (has migration 009 been applied?): %s",
+            resolved_id,
+            exc,
+        )
+        return jsonify({"error": "Failed to record the event"}), 500
 
 
 @bp.route("/internal/expire-grants", methods=["POST"])

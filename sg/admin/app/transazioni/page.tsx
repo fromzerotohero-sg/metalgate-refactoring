@@ -12,6 +12,7 @@ import {
 import DataTable, { type ColumnDef, type DataTableQuery, type SortOrder } from "@/src/components/admin/data-table";
 import FilterBar, { type ActiveFilter } from "@/src/components/admin/filter-bar";
 import Badge, { type BadgeTone } from "@/src/components/admin/badge";
+import { TRANSACTION_TYPE_LABELS, typeLabel } from "@/src/lib/labels";
 
 // Il backend non espone un conteggio totale né un offset: l'endpoint accetta
 // solo `limit` (max 500). Si caricano fino a page*perPage righe già ordinate e
@@ -20,11 +21,7 @@ const MAX_FETCH = 500;
 
 const TYPE_OPTIONS = [
   { value: "", label: "Tutti i tipi" },
-  { value: "purchase", label: "Acquisto" },
-  { value: "subscription_grant", label: "Abbonamento" },
-  { value: "bonus", label: "Bonus" },
-  { value: "deduction", label: "Addebito" },
-  { value: "usage", label: "Uso" }
+  ...Object.keys(TRANSACTION_TYPE_LABELS).map((value) => ({ value, label: typeLabel(value) }))
 ];
 
 const STATUS_OPTIONS = [
@@ -63,7 +60,7 @@ const COLUMNS: ColumnDef<AdminTransaction, unknown>[] = [
     id: "type",
     accessorKey: "type",
     header: "Tipo",
-    cell: ({ row }) => row.original.type || "—"
+    cell: ({ row }) => typeLabel(row.original.type)
   },
   {
     id: "description",

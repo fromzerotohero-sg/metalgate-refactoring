@@ -19,6 +19,7 @@ import StatCard from "@/src/components/admin/StatCard";
 import DataTable, { type ColumnDef } from "@/src/components/admin/data-table";
 import Badge, { type BadgeTone } from "@/src/components/admin/badge";
 import { useToast } from "@/src/components/admin/toast";
+import { typeLabel } from "@/src/lib/labels";
 
 const TX_STATUS_TONES: Record<string, BadgeTone> = {
   completed: "ok",
@@ -108,7 +109,7 @@ const TX_COLUMNS: ColumnDef<AdminTransaction, unknown>[] = [
     enableSorting: false,
     cell: ({ row }) => row.original.users?.username || row.original.users?.email || "—"
   },
-  { accessorKey: "type", header: "Tipo", cell: ({ row }) => row.original.type || "—" },
+  { accessorKey: "type", header: "Tipo", cell: ({ row }) => typeLabel(row.original.type) },
   {
     accessorKey: "amount",
     header: "Importo",

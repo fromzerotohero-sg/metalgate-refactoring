@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
@@ -9,12 +9,15 @@ import {
   formatDate,
   formatEuro,
   formatNumber,
-  type AdminUserDetail
+  type AdminUserDetail,
+  type UserEvent
 } from "@/src/lib/admin-api";
 import StatCard from "@/src/components/admin/StatCard";
 import GrantCreditsForm from "@/src/components/admin/GrantCreditsForm";
 import DataTable, { type ColumnDef } from "@/src/components/admin/data-table";
 import Badge, { VerifiedBadge, type BadgeTone } from "@/src/components/admin/badge";
+import { formatRelativeTime } from "@/src/components/admin/chat/time";
+import { eventLabel, platformColor, platformLabel, serviceLabel, typeLabel } from "@/src/lib/labels";
 import type { AdminTransaction } from "@/src/lib/admin-api";
 
 const TX_STATUS_TONES: Record<string, BadgeTone> = {
@@ -39,12 +42,17 @@ const TX_COLUMNS: ColumnDef<AdminTransaction, unknown>[] = [
     sortingFn: "datetime",
     cell: ({ row }) => formatDate(row.original.timestamp)
   },
-  { accessorKey: "type", header: "Tipo", cell: ({ row }) => row.original.type || "—" },
+  { accessorKey: "type", header: "Tipo", cell: ({ row }) => typeLabel(row.original.type) },
   {
     accessorKey: "description",
     header: "Descrizione",
     enableSorting: false,
-    cell: ({ row }) => row.original.description || "—"
+    cell: ({ row }) => (
+      <>
+        {row.original.description || "—"}
+        {row.original.service && <span className="admin-muted"> · {serviceLabel(row.original.service)}</span>}
+      </>
+    )
   },
   {
     accessorKey: "amount",
@@ -64,11 +72,28 @@ const TX_COLUMNS: ColumnDef<AdminTransaction, unknown>[] = [
   }
 ];
 
+function formatMetaValue(value: unknown): string {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+// Meta di un evento in una riga sola: "chiave: valore · chiave: valore".
+function metaLine(meta?: Record<string, unknown> | null): string | null {
+  if (!meta) return null;
+  const parts = Object.entries(meta).map(([key, value]) => `${key}: ${formatMetaValue(value)}`);
+  return parts.length ? parts.join(" · ") : null;
+}
+
 export default function UserDetailPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
   const [detail, setDetail] = useState<AdminUserDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [events, setEvents] = useState<UserEvent[]>([]);
+  // `null` = caricamento in corso; `false` = endpoint/migration 009 assenti
+  // (stato vuoto muted, mai un errore).
+  const [eventsAvailable, setEventsAvailable] = useState<boolean | null>(null);
 
   const load = useCallback(() => {
     adminApi
@@ -79,10 +104,38 @@ export default function UserDetailPage() {
 
   useEffect(load, [load]);
 
+  useEffect(() => {
+    adminApi
+      .userEvents(id)
+      .then((res) => {
+        setEvents(res.events ?? []);
+        setEventsAvailable(res.events_available !== false);
+      })
+      .catch(() => setEventsAvailable(false));
+  }, [id]);
+
+  const transactions = useMemo(() => detail?.transactions ?? [], [detail]);
+
+  // Spese per servizio: solo crediti in uscita (amount < 0) con un servizio
+  // valorizzato. Se nessuna transazione ha `service`, la card non si mostra.
+  const serviceBreakdown = useMemo(() => {
+    const byService = new Map<string, { credits: number; count: number }>();
+    for (const tx of transactions) {
+      if (!tx.service || tx.amount >= 0) continue;
+      const entry = byService.get(tx.service) ?? { credits: 0, count: 0 };
+      entry.credits += Math.abs(tx.amount);
+      entry.count += 1;
+      byService.set(tx.service, entry);
+    }
+    return [...byService.entries()]
+      .map(([service, data]) => ({ service, ...data }))
+      .sort((a, b) => b.credits - a.credits);
+  }, [transactions]);
+
   if (error) return <p className="admin-error">{error}</p>;
   if (!detail) return <p className="admin-loading">Caricamento utente…</p>;
 
-  const { user, transactions, stats, referred_users: referred } = detail;
+  const { user, stats, referred_users: referred } = detail;
 
   return (
     <div className="admin-page">
@@ -142,6 +195,59 @@ export default function UserDetailPage() {
         <h2>Accredita crediti</h2>
         <GrantCreditsForm userId={user.id} onGranted={load} />
       </section>
+
+      <section className="admin-card">
+        <h2>Cosa fa nelle app</h2>
+        {eventsAvailable === null ? (
+          <p className="admin-empty">Caricamento attività…</p>
+        ) : eventsAvailable === false ? (
+          <p className="admin-empty">La cronologia attività sarà disponibile a breve.</p>
+        ) : events.length === 0 ? (
+          <p className="admin-empty">
+            Nessuna attività registrata dalle app — gli eventi appariranno qui quando le piattaforme li invieranno.
+          </p>
+        ) : (
+          <ul className="admin-timeline">
+            {events.map((event) => {
+              const meta = metaLine(event.meta);
+              return (
+                <li key={event.id} className="admin-timeline-item">
+                  <span
+                    className="admin-timeline-dot"
+                    style={{ background: platformColor(event.platform) }}
+                    title={platformLabel(event.platform)}
+                    aria-hidden
+                  />
+                  <div className="admin-timeline-body">
+                    <div className="admin-timeline-row">
+                      <span className="admin-timeline-label">{event.label ?? eventLabel(event.event_type)}</span>
+                      <span className="admin-timeline-time">{formatRelativeTime(event.created_at)}</span>
+                    </div>
+                    <span className="admin-muted">{platformLabel(event.platform)}</span>
+                    {meta && <p className="admin-timeline-meta">{meta}</p>}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+
+      {serviceBreakdown.length > 0 && (
+        <section className="admin-card">
+          <h2>Crediti per servizio</h2>
+          <ul className="admin-service-rows">
+            {serviceBreakdown.map((row) => (
+              <li key={row.service}>
+                <span className="admin-service-name">{serviceLabel(row.service)}</span>
+                <span className="admin-muted">
+                  — {formatNumber(row.credits)} crediti · {formatNumber(row.count)} operazioni
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section className="admin-card">
         <h2>Transazioni</h2>

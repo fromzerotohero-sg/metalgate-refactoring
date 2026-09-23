@@ -233,6 +233,24 @@
 .admin-facts dt { font-size: 12.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
 .admin-facts dd { margin: 4px 0 0; font-size: 14.5px; font-weight: 600; color: var(--ink); word-break: break-all; }
 
+.admin-timeline { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.admin-timeline-item { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.admin-timeline-item:last-child { border-bottom: none; }
+.admin-timeline-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; }
+.admin-timeline-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.admin-timeline-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.admin-timeline-label { font-size: 14px; font-weight: 600; color: var(--ink); }
+.admin-timeline-time { flex: none; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+.admin-timeline-meta { margin: 0; font-size: 13px; color: var(--muted); word-break: break-word; }
+
+.admin-service-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.admin-service-rows li {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 14px;
+}
+.admin-service-rows li:last-child { border-bottom: none; }
+.admin-service-name { font-weight: 600; color: var(--ink); }
+
 .admin-grant-form { display: flex; flex-direction: column; gap: 14px; align-items: flex-start; }
 .admin-grant-fields { display: flex; gap: 14px; flex-wrap: wrap; width: 100%; }
 .admin-grant-fields .field { flex: 1; min-width: 160px; }

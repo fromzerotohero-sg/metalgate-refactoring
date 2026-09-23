@@ -764,3 +764,77 @@ massimo 200. Valida entrambi lato client così l'utente non viene respinto con u
 è aperto gli aggiunge il messaggio (`200`, `appended: true`) invece di creare un
 secondo thread — quindi "nuova conversazione" nella UI ha senso solo quando quella
 precedente mostra `"status": "closed"`.
+
+## 14. Eventi attività utente
+
+Le app delle piattaforme (efootball, tornei, …) possono segnalare ciò che un
+utente ha fatto — "roster aggiornato", "build salvata", "partita giocata" —
+così il pannello admin può mostrare una timeline di attività per utente attraverso
+tutte le piattaforme. Questo è un endpoint **server-to-server**: lo chiama il
+backend della piattaforma, mai un browser.
+
+L'autenticazione è la API key della piattaforma nell'header `X-Platform-Key` —
+la stessa credenziale e lo stesso header della spesa crediti
+(`POST /api/credits/spend`). Il client_id del chiamante viene salvato su ogni
+evento, quindi la timeline mostra *quale* app lo ha segnalato. Non c'è nulla da
+rileggere qui: gli eventi sono consumati dal pannello admin, non dalla
+piattaforma che li ha inviati.
+
+### `POST /api/internal/events`
+
+Rate limit: 60 al minuto.
+
+```http
+POST /api/internal/events
+X-Platform-Key: <la api_key della piattaforma>
+Content-Type: application/json
+```
+
+```json
+{
+  "user_id": "3f6b2c1e-…",
+  "event_type": "roster_updated",
+  "label": "Rosa aggiornata per la Weekend League",
+  "meta": { "formation": "4-3-3", "players_changed": 4 },
+  "occurred_at": "2026-09-21T10:14:00+00:00"
+}
+```
+
+- **Utente**: `user_id` (UUID) **oppure** `email` — uno dei due è obbligatorio.
+  Se li mandi entrambi, devono risolvere allo stesso account o la chiamata
+  fallisce con `404`.
+- `event_type` è obbligatorio: snake_case, massimo 64 caratteri
+  (`roster_updated`, non `Roster Updated`).
+- `label` è opzionale, massimo 120 caratteri: un suggerimento leggibile mostrato
+  nella timeline. Omettilo quando `event_type` basta da solo.
+- `meta` è opzionale, un oggetto JSON di massimo 4 KB serializzato. Viene
+  salvato e mostrato così com'è nella timeline admin ma mai interpretato — non
+  metterci segreti o dati personali.
+- `occurred_at` è opzionale (ISO-8601); il default è l'ora corrente del server.
+  Mandalo quando l'evento viene segnalato in ritardo.
+
+**201** — l'evento è stato registrato:
+
+```json
+{ "id": 1042, "created_at": "2026-09-21T10:14:00+00:00" }
+```
+
+`401` chiave mancante o non valida. `404` `{"error": "User not found"}` quando
+l'utente non esiste. `400` per un `event_type` mancante o non valido, un
+`user_id` non UUID, un `label` o `meta` troppo grande, o un `occurred_at` non
+interpretabile.
+
+### Nomenclatura di `event_type`
+
+Scegli verbi stabili, minuscoli, snake_case al passato, mirati all'azione — la
+timeline raggruppa e filtra su questa stringa, quindi non rinominarla mai.
+Esempi consigliati: `roster_updated`, `build_saved`, `match_played`,
+`tournament_joined`, `achievement_unlocked`. I dettagli che variano a ogni
+occorrenza vanno in `label` o `meta`, non nel tipo.
+
+### Dove compaiono gli eventi
+
+Il pannello admin li mostra nella pagina di dettaglio utente come timeline, dal
+più recente, tramite `GET /api/admin/users/<id>/events` (credenziale admin, non
+una chiave piattaforma). Nulla da fare lato client: una volta che questo
+endpoint risponde `201`, l'evento è in quella timeline.

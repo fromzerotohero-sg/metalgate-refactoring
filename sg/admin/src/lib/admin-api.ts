@@ -118,6 +118,9 @@ export type AdminTransaction = {
   amount: number;
   type?: string;
   description?: string;
+  // client_id della piattaforma che ha registrato la spesa (migration 006);
+  // NULL per le righe precedenti e per i grant.
+  service?: string | null;
   status?: string;
   timestamp?: string;
   users?: { username?: string; email?: string } | null;
@@ -131,6 +134,23 @@ export type AdminUserDetail = {
 };
 
 export type ActivityPoint = { date: string; active_users: number };
+
+export type UserEvent = {
+  id: string;
+  platform?: string | null;
+  event_type?: string | null;
+  label?: string | null;
+  meta?: Record<string, unknown> | null;
+  created_at?: string | null;
+};
+
+// `events_available === false` segnala che la migration 009 non è applicata:
+// la UI mostra uno stato vuoto, non un errore.
+export type UserEventsResponse = {
+  events: UserEvent[];
+  has_more: boolean;
+  events_available?: boolean;
+};
 
 export type RevenuePoint = { date: string; revenue: number };
 
@@ -387,6 +407,8 @@ export const adminApi = {
     return request<AdminUsersPage>(`/users${qs ? `?${qs}` : ""}`);
   },
   userDetail: (id: string) => request<AdminUserDetail>(`/users/${encodeURIComponent(id)}`),
+  userEvents: (id: string, limit = 50) =>
+    request<UserEventsResponse>(`/users/${encodeURIComponent(id)}/events?limit=${limit}`),
   transactions: (query: TransactionsQuery = {}) => {
     const params = new URLSearchParams();
     if (query.limit) params.set("limit", String(query.limit));

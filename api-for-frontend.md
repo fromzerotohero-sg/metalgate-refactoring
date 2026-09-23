@@ -750,3 +750,73 @@ Validate both client-side so the user is not bounced with a `400`.
 open appends to it (`200`, `appended: true`) instead of creating a second thread —
 so "new conversation" in the UI only makes sense once the previous one shows
 `"status": "closed"`.
+
+## 14. User activity events
+
+Platform apps (efootball, tornei, …) can report what a user did — "roster
+updated", "build saved", "match played" — so the admin panel can render a
+per-user activity timeline across all platforms. This is a **server-to-server**
+endpoint: it is called by the platform's backend, never from a browser.
+
+Auth is the platform API key in the `X-Platform-Key` header — the same
+credential and the same header as credit spend (`POST /api/credits/spend`).
+The caller's client_id is stored on every event, so the timeline shows *which*
+app reported it. There is nothing to read back here: events are consumed by the
+admin panel, not by the platform that sent them.
+
+### `POST /api/internal/events`
+
+Rate limit: 60 per minute.
+
+```http
+POST /api/internal/events
+X-Platform-Key: <the platform's api_key>
+Content-Type: application/json
+```
+
+```json
+{
+  "user_id": "3f6b2c1e-…",
+  "event_type": "roster_updated",
+  "label": "Roster updated for Weekend League",
+  "meta": { "formation": "4-3-3", "players_changed": 4 },
+  "occurred_at": "2026-09-21T10:14:00+00:00"
+}
+```
+
+- **User**: `user_id` (UUID) **or** `email` — one of the two is required. If you
+  send both, they must resolve to the same account or the call fails with `404`.
+- `event_type` is required: snake_case, at most 64 characters
+  (`roster_updated`, not `Roster Updated`).
+- `label` is optional, at most 120 characters: a human-readable hint shown in
+  the timeline. Omit it when `event_type` says enough.
+- `meta` is optional, a JSON object of at most 4 KB serialized. It is stored
+  and displayed verbatim in the admin timeline but never interpreted — do not
+  put secrets or personal data in it.
+- `occurred_at` is optional (ISO-8601); defaults to the server's current time.
+  Send it when the event is reported after the fact.
+
+**201** — the event was recorded:
+
+```json
+{ "id": 1042, "created_at": "2026-09-21T10:14:00+00:00" }
+```
+
+`401` missing or invalid key. `404` `{"error": "User not found"}` when the
+user does not exist. `400` for a missing/invalid `event_type`, a non-UUID
+`user_id`, an oversized `label` or `meta`, or an unparseable `occurred_at`.
+
+### Naming `event_type`
+
+Pick stable, lowercase snake_case verbs in past tense, scoped to the action —
+the timeline groups and filters on this string, so rename it never. Recommended
+examples: `roster_updated`, `build_saved`, `match_played`, `tournament_joined`,
+`achievement_unlocked`. Details that vary per occurrence belong in `label` or
+`meta`, not in the type.
+
+### Where the events surface
+
+The admin panel shows them on the user detail page as a timeline, newest first,
+via `GET /api/admin/users/<id>/events` (admin credential, not a platform key).
+Nothing to do client-side: once this endpoint returns `201`, the event is in
+that timeline.

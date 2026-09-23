@@ -9,6 +9,7 @@
 | `006_transaction_service.sql` | **REQUIRED for platform-spend attribution.** |
 | `007_chat.sql` | **REQUIRED for the support chat** (`/api/chat/*`, `/api/admin/chat/*`) and for audit action detail. |
 | `008_email_campaigns.sql` | **REQUIRED for email campaign history** (`/api/admin/email-campaign/history`). Sending works without it; nothing is recorded. |
+| `009_user_events.sql` | **REQUIRED for user activity events** (`POST /api/internal/events`, `/api/admin/users/<id>/events`). Without it event ingest fails and the admin timeline shows `events_available: false`. |
 | `setup_referrals.sql` | Already applied. Historical **— but see the warning below.** |
 | `add_temp_credits.sql` | Already applied. Historical. |
 | `setup_password_resets.sql` | Already applied. Historical. |
@@ -22,6 +23,7 @@ psql "$SUPABASE_DB_URL" -f 005_google_oauth.sql
 psql "$SUPABASE_DB_URL" -f 006_transaction_service.sql
 psql "$SUPABASE_DB_URL" -f 007_chat.sql
 psql "$SUPABASE_DB_URL" -f 008_email_campaigns.sql
+psql "$SUPABASE_DB_URL" -f 009_user_events.sql
 ```
 
 ## Why the historical files are kept but should not be re-run
