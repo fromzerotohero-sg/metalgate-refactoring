@@ -94,6 +94,11 @@ export default function UserDetailPage() {
         <h1 className="admin-title">{user.username || user.email}</h1>
         {user.tag && <span className="admin-user-tag">#{user.tag}</span>}
         <VerifiedBadge verified={user.email_verified} />
+        {user.email && (
+          <Link href={`/email?to=${encodeURIComponent(user.email)}`} className="btn btn-outline !px-4 !py-2 ml-auto">
+            Invia email
+          </Link>
+        )}
       </div>
 
       <div className="admin-stat-grid">

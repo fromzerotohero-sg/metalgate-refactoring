@@ -8,6 +8,7 @@
 | `005_google_oauth.sql` | **REQUIRED for Google sign-in.** Apply before enabling the Google button. |
 | `006_transaction_service.sql` | **REQUIRED for platform-spend attribution.** |
 | `007_chat.sql` | **REQUIRED for the support chat** (`/api/chat/*`, `/api/admin/chat/*`) and for audit action detail. |
+| `008_email_campaigns.sql` | **REQUIRED for email campaign history** (`/api/admin/email-campaign/history`). Sending works without it; nothing is recorded. |
 | `setup_referrals.sql` | Already applied. Historical **— but see the warning below.** |
 | `add_temp_credits.sql` | Already applied. Historical. |
 | `setup_password_resets.sql` | Already applied. Historical. |
@@ -20,6 +21,7 @@ psql "$SUPABASE_DB_URL" -f 004_admin_audit_and_reset_attempts.sql
 psql "$SUPABASE_DB_URL" -f 005_google_oauth.sql
 psql "$SUPABASE_DB_URL" -f 006_transaction_service.sql
 psql "$SUPABASE_DB_URL" -f 007_chat.sql
+psql "$SUPABASE_DB_URL" -f 008_email_campaigns.sql
 ```
 
 ## Why the historical files are kept but should not be re-run

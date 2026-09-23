@@ -51,6 +51,17 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return payload as T;
 }
 
+// I campi oltre a quelli base sono additivi lato backend: finché il deploy non li
+// espone arrivano `undefined` e la UI degrada a "—" invece di rompersi.
+export type SubscriptionStats = {
+  lite?: number;
+  pro?: number;
+  ultra?: number;
+  total?: number;
+  past_due?: number;
+  canceling?: number;
+};
+
 export type AdminStats = {
   total_users: number;
   total_credits: number;
@@ -59,6 +70,13 @@ export type AdminStats = {
   new_this_week: number;
   total_hp_purchased: number;
   estimated_revenue: number;
+  subscriptions?: SubscriptionStats;
+  mrr?: number;
+  revenue_30d?: number;
+  credits_spent_30d?: number;
+  open_conversations?: number;
+  unread_messages?: number;
+  paying_users?: number;
 };
 
 export type TempGrant = { amount: number; expires_at?: string };
@@ -109,6 +127,8 @@ export type AdminUserDetail = {
 };
 
 export type ActivityPoint = { date: string; active_users: number };
+
+export type RevenuePoint = { date: string; revenue: number };
 
 export type AdminPageMeta = {
   total: number;
@@ -231,6 +251,96 @@ export type TransactionsQuery = {
   to?: string;
 };
 
+// Rispecchia `_normalize_campaign_filters` in routes_admin.py: chiavi e valori
+// ammessi devono restare allineati a quella normalizzazione.
+export type CampaignFilters = {
+  search?: string;
+  verified_status?: "all" | "verified" | "unverified";
+  min_credits?: number;
+  created_within_days?: number;
+  active_within_days?: number;
+  inactive_days_over?: number;
+  referral_type?: "all" | "user" | "streamer" | "none";
+  tag_contains?: string;
+};
+
+export type EmailRecipientPreview = {
+  email: string;
+  username: string;
+  email_verified: boolean;
+  credits_balance: number;
+  last_login?: string | null;
+  created_at?: string | null;
+  tag: string;
+  referral_type: "streamer" | "user" | "none";
+};
+
+export type EmailPreviewResponse = {
+  recipients_count: number;
+  verified_count: number;
+  unverified_count: number;
+  active_30d_count: number;
+  inactive_30d_count: number;
+  preview_limit: number;
+  recipients_preview: EmailRecipientPreview[];
+  recipient_emails: string[];
+  warnings: string[];
+};
+
+export type EmailSendPayload = {
+  filters?: CampaignFilters;
+  recipient_emails?: string[];
+  exclude_emails?: string[];
+  subject: string;
+  heading?: string;
+  intro_text?: string;
+  body_text?: string;
+  footer_note?: string;
+  cta_text?: string;
+  cta_url?: string;
+  banner_image?: string;
+  logo_image?: string;
+  test_email?: string;
+  campaign_id?: string;
+};
+
+export type EmailSendFailure = { email: string; error: string };
+
+// In modalità test il backend restituisce solo un sottoinsieme dei campi.
+export type EmailSendResponse = {
+  mode: "campaign" | "test";
+  campaign_id: string;
+  recipients_count?: number;
+  batches?: number;
+  sent: number;
+  failed: number;
+  errors?: EmailSendFailure[];
+  sent_emails?: string[];
+  failed_recipients?: EmailSendFailure[];
+  excluded_count?: number;
+};
+
+export type EmailCampaignHistoryItem = {
+  id: string;
+  created_at?: string | null;
+  mode: "campaign" | "test" | "single";
+  subject: string;
+  recipients_count: number;
+  sent: number;
+  failed: number;
+};
+
+// `history_available === false` segnala che la migration 008 non è applicata:
+// la UI mostra uno stato vuoto, non un errore.
+export type EmailHistoryResponse = {
+  campaigns: EmailCampaignHistoryItem[];
+  total: number;
+  page: number;
+  per_page: number;
+  total_pages: number;
+  history_available?: boolean;
+};
+
 export const adminApi = {
   login: async (code: string): Promise<void> => {
     const response = await fetch(`${API_BASE}/login`, {
@@ -295,6 +405,13 @@ export const adminApi = {
     }),
   aiByStreamer: () => request<{ by_streamer: AiStreamerUsage[] }>("/ai/by-streamer"),
   activity: (days = 30) => request<{ activity: ActivityPoint[] }>(`/activity?days=${days}`),
+  revenue: (days = 30) => request<{ revenue: RevenuePoint[] }>(`/revenue?days=${days}`),
+  emailPreview: (body: { filters: CampaignFilters; banner_image?: string; logo_image?: string }) =>
+    request<EmailPreviewResponse>("/email-campaign/preview", { method: "POST", body: JSON.stringify(body) }),
+  emailSend: (body: EmailSendPayload) =>
+    request<EmailSendResponse>("/email-campaign/send", { method: "POST", body: JSON.stringify(body) }),
+  emailHistory: (page = 1, perPage = 20) =>
+    request<EmailHistoryResponse>(`/email-campaign/history?page=${page}&per_page=${perPage}`),
   grantCredits: (id: string, body: { amount: number; reason?: string; expires_in_days?: number }) =>
     request<{ credits_added: number; temporary_balance: TempGrant[] }>(`/users/${encodeURIComponent(id)}/credits`, {
       method: "POST",

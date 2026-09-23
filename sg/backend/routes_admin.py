@@ -31,7 +31,7 @@ import sessions
 import streamers
 import totp
 from auth_utils import hash_password
-from constants import REVENUE_TX_TYPES, TX_BONUS
+from constants import PLAN_BEARING_STATUSES, REVENUE_TX_TYPES, TX_BONUS
 from credits import (
     add_temp_credits,
     bulk_user_totals,
@@ -621,6 +621,47 @@ def _load_campaign_users(supabase):
             .data
         )
     )
+
+
+def _record_email_campaign(
+    supabase,
+    *,
+    mode: str,
+    subject: str,
+    heading: str,
+    filters: dict,
+    recipients_count: int,
+    sent: int,
+    failed: int,
+    campaign_id: str,
+):
+    """
+    One history row per send, best effort.
+
+    The table comes from migration 008; on a database without it the insert
+    fails, is logged, and the send result stands — recording history must never
+    turn a delivered campaign into an error.
+    """
+    try:
+        supabase.table("email_campaigns").insert(
+            {
+                "mode": mode,
+                "subject": subject,
+                "heading": heading,
+                "filters": filters,
+                "recipients_count": recipients_count,
+                "sent": sent,
+                "failed": failed,
+                "campaign_id": campaign_id,
+            }
+        ).execute()
+    except Exception as exc:
+        logger.warning(
+            "Could not record the email campaign (has migration 008 been applied?): %s",
+            exc,
+        )
+
+
 @admin_bp.route("/email-campaign/preview", methods=["POST"])
 @limiter.limit("30 per minute")
 @admin_auth_required
@@ -755,6 +796,21 @@ def send_email_campaign():
         if test_email:
             html_body, text_body = build_campaign_bodies(payload, "Test user")
             email_service.send_email(test_email, subject, html_body, text_body)
+            _record_email_campaign(
+                supabase,
+                mode="test",
+                subject=subject,
+                heading=payload["heading"],
+                filters=filters,
+                recipients_count=1,
+                sent=1,
+                failed=0,
+                campaign_id=campaign_id,
+            )
+            g.admin_action_detail = (
+                f"Sent a test email to {test_email} "
+                f"(subject {subject!r}, campaign {campaign_id})"
+            )
             return jsonify(
                 {
                     "mode": "test",
@@ -872,6 +928,29 @@ def send_email_campaign():
                     if len(errors) < REPORTED_ERROR_LIMIT:
                         errors.append(failure)
 
+        # A single explicit recipient with no filters is a one-off email from a
+        # customer page, recorded apart from segment campaigns.
+        mode = (
+            "single"
+            if len(recipient_emails) == 1 and not (data.get("filters") or {})
+            else "campaign"
+        )
+        _record_email_campaign(
+            supabase,
+            mode=mode,
+            subject=subject,
+            heading=payload["heading"],
+            filters=filters,
+            recipients_count=len(recipients),
+            sent=sent,
+            failed=failed,
+            campaign_id=campaign_id,
+        )
+        g.admin_action_detail = (
+            f"Email campaign {campaign_id} ({mode}): subject {subject!r}, "
+            f"{len(recipients)} recipients, {sent} sent, {failed} failed"
+        )
+
         return jsonify(
             {
                 "mode": "campaign",
@@ -889,6 +968,63 @@ def send_email_campaign():
     except Exception as e:
         logger.error("Email campaign send error: %s", e)
         return jsonify({"error": "Failed to send campaign"}), 500
+
+
+@admin_bp.route("/email-campaign/history", methods=["GET"])
+@admin_auth_required
+def email_campaign_history():
+    """
+    Past campaign sends, newest first, in the standard admin list envelope.
+
+    The `email_campaigns` table comes from migration 008; on a database without
+    it this answers 200 with an empty list and `history_available: false` rather
+    than a 500, so the admin UI can tell "not migrated" from "nothing sent yet".
+    """
+    try:
+        supabase = db.require_client()
+        page = max(1, _safe_int(request.args.get("page"), 1))
+        per_page = max(1, min(MAX_PAGE_SIZE, _safe_int(request.args.get("per_page"), 20)))
+        start = (page - 1) * per_page
+
+        try:
+            result = (
+                supabase.table("email_campaigns")
+                .select("*", count="exact")
+                .order("created_at", desc=True)
+                .range(start, start + per_page - 1)
+                .execute()
+            )
+        except Exception as exc:
+            logger.warning(
+                "email_campaigns history query failed (has migration 008 been applied?): %s",
+                exc,
+            )
+            return jsonify(
+                {
+                    "history_available": False,
+                    "campaigns": [],
+                    "total": 0,
+                    "page": page,
+                    "per_page": per_page,
+                    "total_pages": 0,
+                }
+            )
+
+        total = _exact_count(result, result.data or [])
+        return jsonify(
+            {
+                "history_available": True,
+                "campaigns": list(result.data or []),
+                "total": total,
+                "page": page,
+                "per_page": per_page,
+                "total_pages": (total + per_page - 1) // per_page,
+            }
+        )
+
+    except Exception as e:
+        logger.error("Admin email campaign history error: %s", e)
+        return jsonify({"error": "Failed to fetch the campaign history"}), 500
 
 
 @admin_bp.route("/stats", methods=["GET"])
@@ -952,7 +1088,7 @@ def get_stats():
         tx_data = fetch_all(
             lambda offset, limit: (
                 supabase.table("transactions")
-                .select("amount, type")
+                .select("amount, type, timestamp")
                 .order("id")
                 .range(offset, offset + limit - 1)
                 .execute()
@@ -967,6 +1103,91 @@ def get_stats():
         # tracks real paid invoices instead of a fixed rate per credit.
         total_revenue = _estimated_revenue(tx_data)
 
+        # The same figures over the last 30 days. Timestamps are written as
+        # ISO-8601 UTC strings, so a lexicographic comparison is a date filter.
+        month_ago = (sessions.now() - timedelta(days=30)).isoformat()
+        tx_30d = [t for t in tx_data if str(t.get("timestamp") or "") >= month_ago]
+        revenue_30d = _estimated_revenue(tx_30d)
+        credits_spent_30d = sum(
+            abs(_safe_int(t.get("amount"), 0)) for t in tx_30d if is_credit_out(t)
+        )
+
+        # Users who ever paid.
+        paying_result = (
+            supabase.table("users")
+            .select("id", count="exact")
+            .eq("has_purchased", True)
+            .execute()
+        )
+        paying_users = _exact_count(paying_result, paying_result.data or [])
+
+        # Subscriptions currently providing credits, grouped by plan. One
+        # paginated read of the bearing rows: the set is bounded by the user
+        # count, and PostgREST cannot GROUP BY. MRR sums the *current* plan
+        # price from the plans config, so it moves with a price change.
+        try:
+            sub_rows = fetch_all(
+                lambda offset, limit: (
+                    supabase.table("subscriptions")
+                    .select("plan_id, status, cancel_at_period_end")
+                    .in_("status", sorted(PLAN_BEARING_STATUSES))
+                    .order("id")
+                    .range(offset, offset + limit - 1)
+                    .execute()
+                    .data
+                )
+            )
+        except Exception as exc:
+            # Migration 003 is required, but a missing table should not take
+            # down every other figure on the dashboard.
+            logger.error("subscriptions stats query failed (has migration 003 been applied?): %s", exc)
+            sub_rows = []
+
+        plan_counts = {plan_id: 0 for plan_id in plans.order()}
+        past_due = 0
+        canceling = 0
+        mrr_cents = 0
+        for row in sub_rows:
+            plan_id = row.get("plan_id")
+            if plan_id in plan_counts:
+                plan_counts[plan_id] += 1
+            spec = plans.get(plan_id) or {}
+            mrr_cents += int(spec.get("price_cents", 0))
+            if (row.get("status") or "").lower() == "past_due":
+                past_due += 1
+            if row.get("cancel_at_period_end"):
+                canceling += 1
+        subscriptions = {
+            **plan_counts,
+            "total": len(sub_rows),
+            "past_due": past_due,
+            "canceling": canceling,
+        }
+
+        # Open support conversations and the operator's unread count. The chat
+        # tables come from migration 007, which may not be applied everywhere —
+        # report zero rather than failing the whole dashboard.
+        try:
+            open_chat_rows = fetch_all(
+                lambda offset, limit: (
+                    supabase.table("chat_conversations")
+                    .select("unread_admin_count")
+                    .eq("status", "open")
+                    .order("id")
+                    .range(offset, offset + limit - 1)
+                    .execute()
+                    .data
+                )
+            )
+            open_conversations = len(open_chat_rows)
+            unread_messages = sum(
+                int(row.get("unread_admin_count") or 0) for row in open_chat_rows
+            )
+        except Exception as exc:
+            logger.error("chat stats query failed (has migration 007 been applied?): %s", exc)
+            open_conversations = 0
+            unread_messages = 0
+
         return jsonify(
             {
                 "total_users": total_users,
@@ -976,6 +1197,13 @@ def get_stats():
                 "new_this_week": new_this_week,
                 "total_hp_purchased": total_purchased,
                 "estimated_revenue": round(total_revenue, 2),
+                "subscriptions": subscriptions,
+                "mrr": round(mrr_cents / 100.0, 2),
+                "revenue_30d": round(revenue_30d, 2),
+                "credits_spent_30d": credits_spent_30d,
+                "open_conversations": open_conversations,
+                "unread_messages": unread_messages,
+                "paying_users": paying_users,
             }
         )
 
@@ -1269,6 +1497,65 @@ def get_activity_log():
     except Exception as e:
         logger.error("Admin activity error: %s", e)
         return jsonify({"error": "Failed to fetch activity"}), 500
+
+
+@admin_bp.route("/revenue", methods=["GET"])
+@admin_auth_required
+def get_revenue_series():
+    """
+    Daily estimated revenue for the last `days` days (default 30, clamped to
+    1..365), ascending and zero-filled — the same shape as `/activity`.
+
+    A day counts the grants paid that day: `subscription_grant` and legacy
+    `purchase` transactions, each valued at the plan price its amount matches
+    (`plans.euro_value_of_credits`), exactly like `/stats`' `estimated_revenue`.
+    """
+    try:
+        supabase = db.require_client()
+        days = max(1, min(365, _safe_int(request.args.get("days"), 30)))
+        start_date = (sessions.now() - timedelta(days=days)).isoformat()
+
+        rows = fetch_all(
+            lambda offset, limit: (
+                supabase.table("transactions")
+                .select("amount, type, timestamp")
+                .in_("type", sorted(REVENUE_TX_TYPES))
+                .gte("timestamp", start_date)
+                .order("id")
+                .range(offset, offset + limit - 1)
+                .execute()
+                .data
+            )
+        )
+
+        daily: dict = {}
+        for tx in rows:
+            day = str(tx.get("timestamp") or "")[:10]  # YYYY-MM-DD
+            if not day:
+                continue
+            daily[day] = daily.get(day, 0.0) + plans.euro_value_of_credits(
+                _safe_int(tx.get("amount"), 0)
+            )
+
+        # Fill missing days with 0
+        for i in range(days):
+            day = (sessions.now() - timedelta(days=i)).strftime("%Y-%m-%d")
+            if day not in daily:
+                daily[day] = 0.0
+
+        return jsonify(
+            {
+                "days": days,
+                "revenue": [
+                    {"date": k, "revenue": round(v, 2)}
+                    for k, v in sorted(daily.items())
+                ],
+            }
+        )
+
+    except Exception as e:
+        logger.error("Admin revenue error: %s", e)
+        return jsonify({"error": "Failed to fetch revenue"}), 500
 
 
 @admin_bp.route("/streamers", methods=["POST"])

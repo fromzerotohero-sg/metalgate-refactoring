@@ -98,6 +98,7 @@ psql "$SUPABASE_DB_URL" -f sql/004_admin_audit_and_reset_attempts.sql
 psql "$SUPABASE_DB_URL" -f sql/005_google_oauth.sql
 psql "$SUPABASE_DB_URL" -f sql/006_transaction_service.sql
 psql "$SUPABASE_DB_URL" -f sql/007_chat.sql
+psql "$SUPABASE_DB_URL" -f sql/008_email_campaigns.sql
 ```
 
 All are additive and idempotent. `002` creates
@@ -110,7 +111,10 @@ the platform that recorded a spend — without it `POST /api/credits/spend` stil
 moves the credits, it just records no attribution; `007` adds
 `chat_conversations`/`chat_messages` for the support chat and
 `admin_audit_log.detail`, the human-readable summary of a write action —
-without it the `/api/chat/*` and `/api/admin/chat/*` endpoints fail.
+without it the `/api/chat/*` and `/api/admin/chat/*` endpoints fail; `008` adds
+`email_campaigns`, the structured history of campaign sends — without it sending
+still works but nothing is recorded and `/api/admin/email-campaign/history`
+answers with `history_available: false`.
 
 ---
 
@@ -352,14 +356,15 @@ Gated by `X-Admin-Code`. Every bulk read is chunked and paged.
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/api/admin/stats` · `/users` · `/users/<id>` · `/transactions` · `/activity` | Customer analytics. `/users` and `/transactions` take `sort`/`order` (whitelisted columns) plus date-range and field filters; `/streamers` takes `sort`/`order` |
+| GET | `/api/admin/stats` · `/users` · `/users/<id>` · `/transactions` · `/activity` · `/revenue` | Customer analytics. `/stats` also returns `subscriptions` (per-plan counts, `past_due`, `canceling`), `mrr`, `revenue_30d`, `credits_spent_30d`, `paying_users`, `open_conversations`/`unread_messages`. `/revenue?days=` (1..365) is a zero-filled daily series `[{date, revenue}]`, same shape as `/activity`. `/users` and `/transactions` take `sort`/`order` (whitelisted columns) plus date-range and field filters; `/streamers` takes `sort`/`order` |
 | GET | `/api/admin/streamers` | Paged list, with `subordinate_ids` and `network_referred_num` per manager |
 | GET | `/api/admin/streamers/<id>` | One streamer's **branch**: subordinate streamers and every user they collectively referred, each paged |
 | POST | `/api/admin/streamers` · PATCH `/streamers/<id>/manager` | Create a partner; assign or clear a manager (cycle-checked) |
 | POST | `/api/admin/users/<id>/credits` | Grant temporary credits |
 | GET | `/api/admin/chat/conversations` · `/chat/conversations/<id>/messages` · `/chat/unread-count` | Support inbox: paged list (`status`, `search`), full thread (marks the customer's messages read), badge count |
 | POST | `/api/admin/chat/conversations/<id>/messages` · `/close` · `/reopen` | Operator reply; close/reopen a conversation |
-| POST | `/api/admin/email-campaign/preview` · `/send` | Filtered campaigns, batched through Resend |
+| POST | `/api/admin/email-campaign/preview` · `/send` | Filtered campaigns, batched through Resend. Each send is recorded in `email_campaigns` (mode `campaign`/`test`/`single`) and in the audit log |
+| GET | `/api/admin/email-campaign/history` | Paged send history, newest first (`page`/`per_page`, default 20). 200 with `history_available: false` until migration 008 is applied |
 | GET | `/api/admin/ai/*` · `/openai/*` | AI usage from `ai_usage_logs`, plus a live read from OpenAI |
 
 ### Platform integration

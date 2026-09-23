@@ -13,7 +13,8 @@ const NAV_ITEMS = [
   { href: "/utenti", label: "Utenti" },
   { href: "/streamers", label: "Streamer" },
   { href: "/transazioni", label: "Transazioni" },
-  { href: "/chat", label: "Chat" }
+  { href: "/chat", label: "Chat" },
+  { href: "/email", label: "Email" }
 ];
 
 function ChatUnreadBadge() {
