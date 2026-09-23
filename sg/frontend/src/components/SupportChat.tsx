@@ -5,6 +5,8 @@ import { ApiError, api, type ChatConversation, type ChatMessage } from "@/src/li
 import { useLocale, useT } from "@/src/lib/i18n";
 
 const POLL_INTERVAL_MS = 10_000;
+const MAX_OPEN_CONVERSATIONS = 3;
+type SupportView = "list" | "thread" | "new";
 
 function newestMessageId(messages: ChatMessage[]) {
   return messages.reduce((latest, message) => Math.max(latest, message.id), 0);
@@ -16,7 +18,7 @@ export function SupportChat() {
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [conversation, setConversation] = useState<ChatConversation | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [startingNew, setStartingNew] = useState(false);
+  const [view, setView] = useState<SupportView>("list");
   const [body, setBody] = useState("");
   const [subject, setSubject] = useState("");
   const [loading, setLoading] = useState(true);
@@ -34,6 +36,7 @@ export function SupportChat() {
   const loadThread = useCallback(async (selected: ChatConversation, after?: number) => {
     const result = await api.chatMessages(selected.id, after);
     setConversation(result.conversation);
+    setConversations((current) => current.map((item) => item.id === result.conversation.id ? { ...item, ...result.conversation } : item));
     setMessages((current) => {
       if (!after) return result.messages;
       const known = new Set(current.map((message) => message.id));
@@ -47,12 +50,7 @@ export function SupportChat() {
     setError("");
     try {
       const result = await api.chatConversations();
-      const selected = result.conversations.find((item) => item.status === "open") ?? result.conversations[0] ?? null;
       setConversations(result.conversations);
-      setStartingNew(false);
-      setConversation(selected);
-      setMessages([]);
-      if (selected) await loadThread(selected);
     } catch (caught) {
       const apiError = caught as ApiError;
       if (apiError.status === 401) {
@@ -63,12 +61,12 @@ export function SupportChat() {
     } finally {
       setLoading(false);
     }
-  }, [loadThread, t]);
+  }, [t]);
 
   useEffect(() => { void load(); }, [load]);
 
   useEffect(() => {
-    if (!conversation) return;
+    if (view !== "thread" || !conversation) return;
     const timer = window.setInterval(() => {
       const after = newestMessageId(messages);
       void loadThread(conversation, after || undefined).then(() => {
@@ -76,40 +74,50 @@ export function SupportChat() {
       }).catch(() => {});
     }, POLL_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [conversation, loadThread, messages]);
+  }, [conversation, loadThread, messages, view]);
 
   useEffect(() => {
-    threadEnd.current?.scrollIntoView({ block: "end", behavior: "smooth" });
-  }, [messages.length]);
+    if (view === "thread") threadEnd.current?.scrollIntoView({ block: "end", behavior: "smooth" });
+  }, [messages.length, view]);
 
   const openConversationCount = conversations.filter((item) => item.status === "open").length;
-  const canStartAnother = openConversationCount < 3;
-  const composingNew = startingNew || !conversation || (conversation.status === "closed" && canStartAnother);
-  const canReply = !composingNew && conversation?.status === "open";
-  const submitLabel = canReply ? t("support.send") : t("support.start");
+  const canStartConversation = openConversationCount < MAX_OPEN_CONVERSATIONS;
+  const canReply = view === "thread" && conversation?.status === "open";
+  const statusText = useMemo(
+    () => conversation?.status === "closed" ? t("support.closed") : t("support.open"),
+    [conversation?.status, t]
+  );
 
-  async function selectConversation(selected: ChatConversation) {
-    setStartingNew(false);
+  async function openConversation(selected: ChatConversation) {
+    setLoading(true);
+    setError("");
     setConversation(selected);
     setMessages([]);
-    setError("");
     try {
       await loadThread(selected);
+      setView("thread");
     } catch (caught) {
       const apiError = caught as ApiError;
       setError(apiError.message || t("support.loadError"));
+    } finally {
+      setLoading(false);
     }
   }
 
   function startConversation() {
-    setStartingNew(true);
     setConversation(null);
     setMessages([]);
-    setError("");
     setSubject("");
     setBody("");
+    setError("");
+    setView("new");
   }
-  const statusText = useMemo(() => conversation?.status === "closed" ? t("support.closed") : t("support.open"), [conversation?.status, t]);
+
+  function returnToList() {
+    setError("");
+    setView("list");
+    void load();
+  }
 
   async function send(event: FormEvent) {
     event.preventDefault();
@@ -122,14 +130,15 @@ export function SupportChat() {
       if (canReply && conversation) {
         const result = await api.sendChatMessage(conversation.id, message);
         setConversation(result.conversation);
+        setConversations((current) => current.map((item) => item.id === result.conversation.id ? { ...item, ...result.conversation } : item));
         setMessages((current) => [...current, result.message]);
       } else {
         const result = await api.createChatConversation(message, subject.trim() || undefined);
         setConversation(result.conversation);
         setConversations((current) => [result.conversation, ...current]);
         setMessages([result.message]);
-        setStartingNew(false);
         setSubject("");
+        setView("thread");
       }
       setBody("");
     } catch (caught) {
@@ -142,54 +151,69 @@ export function SupportChat() {
 
   if (loading) return <div className="support-loading">{t("common.loading")}</div>;
 
+  if (view === "list") {
+    return (
+      <section className="support-chat" aria-label={t("support.title")}>
+        <header className="support-chat-header">
+          <div>
+            <p className="eyebrow dark">{t("support.eyebrow")}</p>
+            <h2>{t("support.listTitle")}</h2>
+            <p>{t("support.listIntro")}</p>
+          </div>
+          {canStartConversation && <button className="btn btn-primary" onClick={startConversation}>{t("support.newConversation")}</button>}
+        </header>
+        {error && <div className="form-error" role="alert">{error}</div>}
+        {conversations.length ? (
+          <div className="support-chat-list">
+            {conversations.map((item) => (
+              <button type="button" className="support-chat-list-item" key={item.id} onClick={() => void openConversation(item)}>
+                <span className={`support-status ${item.status}`}>{item.status === "open" ? t("support.open") : t("support.closed")}</span>
+                <strong>{item.subject || t("support.untitled")}</strong>
+                <span className="support-chat-list-preview">{item.last_message?.preview || t("support.noMessages")}</span>
+                <small>{formatTime(item.last_message_at || item.created_at)}</small>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="support-empty support-empty-card"><p>{t("support.empty")}</p><button className="btn btn-primary" onClick={startConversation}>{t("support.start")}</button></div>
+        )}
+        {!canStartConversation && <p className="support-closed-note">{t("support.openLimitReached")}</p>}
+      </section>
+    );
+  }
+
+  const isNew = view === "new";
   return (
     <section className="support-chat" aria-label={t("support.title")}>
+      <button type="button" className="back-link" onClick={returnToList}>← {t("support.backToChats")}</button>
       <header className="support-chat-header">
         <div>
           <p className="eyebrow dark">{t("support.eyebrow")}</p>
-          <h2>{t("support.title")}</h2>
-          <p>{t("support.intro")}</p>
+          <h2>{isNew ? t("support.newTitle") : (conversation?.subject || t("support.untitled"))}</h2>
+          <p>{isNew ? t("support.newIntro") : t("support.intro")}</p>
         </div>
-        {conversation && <span className={`support-status ${conversation.status}`}>{statusText}</span>}
+        {!isNew && conversation && <span className={`support-status ${conversation.status}`}>{statusText}</span>}
       </header>
-
-      {conversations.length > 0 && (
-        <div className="support-conversations" aria-label={t("support.conversations")}>
-          {conversations.map((item) => (
-            <button
-              type="button"
-              className={item.id === conversation?.id && !startingNew ? "selected" : ""}
-              key={item.id}
-              onClick={() => void selectConversation(item)}
-            >
-              <span>{item.subject || t("support.untitled")}</span>
-              <small>{item.status === "open" ? t("support.open") : t("support.closed")}</small>
-            </button>
-          ))}
-          {canStartAnother && <button type="button" className={startingNew ? "selected new" : "new"} onClick={startConversation}>{t("support.newConversation")}</button>}
-        </div>
-      )}
-
       {error && <div className="form-error" role="alert">{error}</div>}
 
-      {conversation?.subject && !startingNew && <p className="support-subject"><strong>{t("support.subject")}:</strong> {conversation.subject}</p>}
+      {!isNew && conversation?.subject && <p className="support-subject"><strong>{t("support.subject")}:</strong> {conversation.subject}</p>}
+      {!isNew && (
+        <div className="support-thread" aria-live="polite">
+          {messages.map((message) => (
+            <div className={`support-message ${message.sender}`} key={message.id}>
+              <div className="support-message-body">{message.body}</div>
+              <time>{message.sender === "admin" ? t("support.admin") : t("support.you")} · {formatTime(message.created_at)}</time>
+              {message.sender === "user" && <p className="support-wait-note">{t("support.waitForAdmin")}</p>}
+            </div>
+          ))}
+          <div ref={threadEnd} />
+        </div>
+      )}
+      {!isNew && conversation?.status === "closed" && <p className="support-closed-note">{t("support.closedThread")}</p>}
 
-      <div className="support-thread" aria-live="polite">
-        {!conversation && <p className="support-empty">{t("support.empty")}</p>}
-        {messages.map((message) => (
-          <div className={`support-message ${message.sender}`} key={message.id}>
-            <div className="support-message-body">{message.body}</div>
-            <time>{message.sender === "admin" ? t("support.admin") : t("support.you")} · {formatTime(message.created_at)}</time>
-          </div>
-        ))}
-        <div ref={threadEnd} />
-      </div>
-
-      {conversation?.status === "closed" && <p className="support-closed-note">{canStartAnother ? t("support.closedNote") : t("support.openLimitReached")}</p>}
-
-      {(canReply || composingNew) && (
+      {(isNew || canReply) && (
         <form className="support-composer" onSubmit={send}>
-          {composingNew && (
+          {isNew && (
             <label className="field">
               <span className="field-label">{t("support.subject")}</span>
               <div className="field-input"><input value={subject} maxLength={200} onChange={(event) => setSubject(event.target.value)} placeholder={t("support.subjectPlaceholder")} /></div>
@@ -201,7 +225,7 @@ export function SupportChat() {
           </label>
           <div className="support-composer-footer">
             <small>{t("support.replyTime")}</small>
-            <button className="btn btn-primary" disabled={sending}>{sending ? t("support.sending") : submitLabel}</button>
+            <button className="btn btn-primary" disabled={sending}>{sending ? t("support.sending") : (isNew ? t("support.start") : t("support.send"))}</button>
           </div>
         </form>
       )}

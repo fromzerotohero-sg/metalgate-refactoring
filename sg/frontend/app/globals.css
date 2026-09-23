@@ -696,6 +696,15 @@ a.platform-card:hover .platform-arrow, .platform-card a:hover .platform-arrow { 
 .support-status { flex-shrink: 0; padding: 6px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
 .support-status.open { background: #dcfce7; color: #15803d; }
 .support-status.closed { background: #f1f5f9; color: #475569; }
+.support-chat-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 24px; }
+.support-chat-list-item { position: relative; min-height: 148px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 20px; border: 1px solid var(--line); border-radius: 14px; background: #fff; color: var(--ink); text-align: left; transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease; }
+.support-chat-list-item:hover { border-color: var(--blue); box-shadow: var(--shadow-soft); transform: translateY(-1px); }
+.support-chat-list-item .support-status { margin-bottom: 2px; }
+.support-chat-list-item strong { max-width: 100%; overflow: hidden; font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
+.support-chat-list-preview { display: -webkit-box; overflow: hidden; color: var(--muted); font-size: 13px; line-height: 1.45; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.support-chat-list-item small { margin-top: auto; color: var(--muted); font-size: 11.5px; }
+.support-empty-card { min-height: 250px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; border: 1px dashed #bfdbfe; border-radius: 14px; background: #f8fbff; }
+.support-empty-card .btn { width: auto; }
 .support-conversations { display: flex; gap: 8px; margin-top: 20px; overflow-x: auto; padding-bottom: 4px; }
 .support-conversations button { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; max-width: 180px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--ink); text-align: left; }
 .support-conversations button span { overflow: hidden; max-width: 155px; font-size: 13px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
@@ -717,6 +726,7 @@ a.platform-card:hover .platform-arrow, .platform-card a:hover .platform-arrow { 
 .support-message.user .support-message-body { background: var(--navy-800); color: #fff; border-bottom-right-radius: 4px; }
 .support-message.admin .support-message-body { background: #e8eef9; color: var(--ink); border-bottom-left-radius: 4px; }
 .support-message time { color: var(--muted); font-size: 11.5px; }
+.support-wait-note { max-width: 360px; margin: 3px 0 0; padding: 9px 11px; border-left: 3px solid #93c5fd; border-radius: 0 8px 8px 0; background: #eff6ff; color: #475569; font-size: 12px; line-height: 1.45; }
 .support-closed-note { margin-top: 16px; color: #475569; font-size: 13.5px; }
 .support-composer { margin-top: 22px; display: flex; flex-direction: column; gap: 15px; }
 .support-composer textarea { width: 100%; resize: vertical; border: none; outline: none; background: transparent; padding: 14px 0; font: inherit; line-height: 1.45; color: var(--ink); }
@@ -843,6 +853,7 @@ a.platform-card:hover .platform-arrow, .platform-card a:hover .platform-arrow { 
   .support-chat { padding: 22px 18px; }
   .support-chat-header { flex-direction: column; }
   .support-message { max-width: 90%; }
+  .support-chat-list { grid-template-columns: 1fr; }
   .support-composer-footer { align-items: flex-start; flex-direction: column; }
   .support-composer-footer .btn { width: auto; }
   .btn { width: 100%; }
