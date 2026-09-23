@@ -52,6 +52,16 @@ Content-Security-Policy.
   che il tag si carica da sé non va elencato in `script-src` (lo carica uno script già
   fidato), ma la beacon e il pixel a cui riporta escono da questo origin: per questo
   `connect-src` e `img-src` includono `https://*.metricool.com`.
+- **`app/layout.tsx`** monta allo stesso modo il container di Google Tag Manager
+  (`GTM-MP69D7WN`), nonce incluso — e vale la stessa regola: `gtm.js` non va elencato in
+  `script-src`, lo carica uno script già fidato. Qui però serve altro, perché non tutto
+  passa dallo script graph: il fallback `<noscript>` è un **iframe** su
+  `www.googletagmanager.com`, quindi la policy ha un `frame-src` esplicito (il
+  `default-src 'self'` lo bloccherebbe), e le beacon dei tag del container escono da
+  questo origin, quindi `connect-src` e `img-src` includono
+  `https://www.googletagmanager.com` e `https://*.google-analytics.com` (wildcard perché
+  GA4 distribuisce la raccolta su `region1.`…`regionN.`). Un tag non-Google aggiunto al
+  container dovrà aggiungere il proprio host qui.
 - **`next.config.mjs`** imposta HSTS (l'header dell'API copre solo il suo host,
   `v2.…`; HSTS è host-scoped, quindi questo origin ha bisogno del suo),
   `X-Content-Type-Options`,
@@ -71,7 +81,7 @@ white screen).
 ```
 {
   key: "Content-Security-Policy",
-  value: "default-src 'self'; script-src 'self' 'unsafe-inline' https://tracker.metricool.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.metricool.com; font-src 'self' data:; connect-src 'self' https://v2.fromzerotohero.io https://*.metricool.com; form-action 'self'; frame-ancestors 'none'; base-uri 'self'; object-src 'none'; upgrade-insecure-requests"
+  value: "default-src 'self'; script-src 'self' 'unsafe-inline' https://tracker.metricool.com https://www.googletagmanager.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.metricool.com https://*.google-analytics.com https://www.googletagmanager.com; font-src 'self' data:; connect-src 'self' https://v2.fromzerotohero.io https://*.metricool.com https://www.googletagmanager.com https://*.google-analytics.com; frame-src 'self' https://www.googletagmanager.com; form-action 'self'; frame-ancestors 'none'; base-uri 'self'; object-src 'none'; upgrade-insecure-requests"
 }
 ```
 

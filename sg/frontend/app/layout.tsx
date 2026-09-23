@@ -26,6 +26,14 @@ export const viewport = { themeColor: "#081232" };
 const METRICOOL_SNIPPET =
   'function loadScript(a){var b=document.getElementsByTagName("head")[0],c=document.createElement("script");c.type="text/javascript",c.src="https://tracker.metricool.com/resources/be.js",c.onreadystatechange=a,c.onload=a,b.appendChild(c)}loadScript(function(){beTracker.t({hash:"3757d452d916a0773a028d35515abf97"})});';
 
+const GTM_ID = "GTM-MP69D7WN";
+
+// Google Tag Manager's container snippet, verbatim from their console: it seeds
+// `dataLayer`, then async-loads `gtm.js` for the container above. The id is
+// interpolated rather than pasted so the <noscript> fallback below cannot drift
+// out of sync with it.
+const GTM_SNIPPET = `(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','${GTM_ID}');`;
+
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   // Touching request headers opts every route out of static prerendering, which is
   // what a nonce-based CSP needs: a page built once at build time would carry a
@@ -44,6 +52,24 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   return (
     <html lang="it" className={manrope.variable}>
       <body>
+        {/*
+          * Google Tag Manager's <noscript> fallback, which GTM's own instructions
+          * place as the first element in <body>. It only renders when JavaScript is
+          * off — which is also the only case where nothing has loaded the container.
+          *
+          * It is an iframe on `www.googletagmanager.com`, so it needs an explicit
+          * `frame-src`: the `default-src 'self'` fallback would block it. See
+          * `middleware.ts`.
+          */}
+        <noscript>
+          <iframe
+            src={`https://www.googletagmanager.com/ns.html?id=${GTM_ID}`}
+            height="0"
+            width="0"
+            title="Google Tag Manager"
+            style={{ display: "none", visibility: "hidden" }}
+          />
+        </noscript>
         <I18nProvider>
           {children}
           {/*
@@ -62,6 +88,22 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           */}
         <Script id="metricool" nonce={nonce} strategy="afterInteractive">
           {METRICOOL_SNIPPET}
+        </Script>
+        {/*
+          * Google Tag Manager's container snippet, on every page. Same nonce
+          * requirement as Metricool above: `'strict-dynamic'` blocks an un-nonced
+          * inline tag, and a prerendered one would carry a stale nonce. The nonce is
+          * also what lets the snippet pull in `gtm.js` — `'strict-dynamic'` trusts
+          * what a trusted script appends, so `www.googletagmanager.com` never needs a
+          * `script-src` entry (and would be ignored if listed).
+          *
+          * That host *does* need naming elsewhere: `frame-src` for the <noscript>
+          * fallback above, and `connect-src`/`img-src` for the beacons its tags send.
+          * `strategy="afterInteractive"` matches the Metricool tag; switch it to
+          * `beforeInteractive` if early events matter more than the hydration delay.
+          */}
+        <Script id="gtm" nonce={nonce} strategy="afterInteractive">
+          {GTM_SNIPPET}
         </Script>
       </body>
     </html>
