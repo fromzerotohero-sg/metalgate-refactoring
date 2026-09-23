@@ -1095,6 +1095,20 @@ def get_stats():
         )
         active_today = _exact_count(active_result, active_result.data or [])
 
+        # Logged in today, on the UTC calendar day — same lexicographic ISO
+        # comparison as the 30d window below. `active_today` stays a rolling
+        # 24h count; this one resets at midnight.
+        today_start = (
+            sessions.now().replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+        )
+        logged_result = (
+            supabase.table("users")
+            .select("id", count="exact")
+            .gte("last_login", today_start)
+            .execute()
+        )
+        logged_today = _exact_count(logged_result, logged_result.data or [])
+
         # Unverified users
         unverified_result = (
             supabase.table("users")
@@ -1121,7 +1135,7 @@ def get_stats():
         tx_data = fetch_all(
             lambda offset, limit: (
                 supabase.table("transactions")
-                .select("amount, type, timestamp")
+                .select("amount, type, timestamp, user_id")
                 .order("id")
                 .range(offset, offset + limit - 1)
                 .execute()
@@ -1143,6 +1157,18 @@ def get_stats():
         revenue_30d = _estimated_revenue(tx_30d)
         credits_spent_30d = sum(
             abs(_safe_int(t.get("amount"), 0)) for t in tx_30d if is_credit_out(t)
+        )
+
+        # Distinct spenders since the start of today, from the same in-memory
+        # transaction set — no extra query.
+        users_spent_today = len(
+            {
+                t.get("user_id")
+                for t in tx_data
+                if is_credit_out(t)
+                and t.get("user_id")
+                and str(t.get("timestamp") or "") >= today_start
+            }
         )
 
         # Users who ever paid.
@@ -1240,6 +1266,7 @@ def get_stats():
                 "total_users": total_users,
                 "total_credits": total_credits,
                 "active_today": active_today,
+                "logged_today": logged_today,
                 "unverified": unverified,
                 "new_this_week": new_this_week,
                 "total_hp_purchased": total_purchased,
@@ -1248,6 +1275,7 @@ def get_stats():
                 "mrr": round(mrr_cents / 100.0, 2),
                 "revenue_30d": round(revenue_30d, 2),
                 "credits_spent_30d": credits_spent_30d,
+                "users_spent_today": users_spent_today,
                 "open_conversations": open_conversations,
                 "unread_messages": unread_messages,
                 "paying_users": paying_users,

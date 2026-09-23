@@ -11,7 +11,6 @@ import { formatRelativeTime } from "@/src/components/admin/chat/time";
 const QUICK_FILTERS: { value: string; label: string; dot: string | null }[] = [
   { value: "", label: "Tutti", dot: null },
   { value: "today", label: "Attivi oggi", dot: "bg-green-500" },
-  { value: "active", label: "Attivi 7gg", dot: "bg-amber-500" },
   { value: "inactive", label: "Inattivi", dot: "bg-slate-400" },
   { value: "unverified", label: "Non verificati", dot: "bg-red-500" }
 ];
@@ -41,12 +40,17 @@ const COLUMNS: ColumnDef<AdminUser, unknown>[] = [
     header: "Utente",
     cell: ({ row }) => (
       <>
-        <span className="admin-user-name">{row.original.username || "—"}</span>
+        <span className="text-brand font-semibold hover:underline">{row.original.username || "—"}</span>
         {row.original.tag && <span className="admin-user-tag">#{row.original.tag}</span>}
       </>
     )
   },
-  { id: "email", accessorKey: "email", header: "Email" },
+  {
+    id: "email",
+    accessorKey: "email",
+    header: "Email",
+    cell: ({ row }) => <span className="hover:text-brand">{row.original.email || "—"}</span>
+  },
   {
     id: "credits_balance",
     accessorKey: "credits_balance",
@@ -198,7 +202,7 @@ function UsersPageInner() {
             />
           </span>
 
-          <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filtro per stato">
+          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filtro per stato">
             {QUICK_FILTERS.map((filter) => {
               const selected = status === filter.value;
               return (

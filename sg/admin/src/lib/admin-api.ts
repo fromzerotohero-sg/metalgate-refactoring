@@ -68,6 +68,8 @@ export type AdminStats = {
   total_users: number;
   total_credits: number;
   active_today: number;
+  logged_today?: number;
+  users_spent_today?: number;
   unverified: number;
   new_this_week: number;
   total_hp_purchased: number;

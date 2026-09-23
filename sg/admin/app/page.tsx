@@ -119,6 +119,17 @@ export default function PanoramicaPage() {
       <div className="admin-stat-grid">
         <StatCard label="Utenti totali" value={formatNumber(stats.total_users)} hint={`${formatNumber(stats.new_this_week)} nuovi negli ultimi 7 giorni`} />
         <StatCard
+          label="Login oggi"
+          value={stats.logged_today != null ? formatNumber(stats.logged_today) : formatNumber(stats.active_today)}
+          hint={stats.logged_today != null ? undefined : "Ultime 24 ore"}
+          href="/utenti?status=today"
+        />
+        <StatCard
+          label="Hanno speso crediti oggi"
+          value={stats.users_spent_today != null ? formatNumber(stats.users_spent_today) : "—"}
+          href="/transazioni"
+        />
+        <StatCard
           label="Abbonati attivi"
           value={subs?.total != null ? formatNumber(subs.total) : "—"}
           hint={subs ? `Lite ${formatNumber(subs.lite)} · Pro ${formatNumber(subs.pro)} · Ultra ${formatNumber(subs.ultra)}` : undefined}
