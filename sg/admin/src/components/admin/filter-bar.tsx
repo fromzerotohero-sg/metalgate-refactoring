@@ -11,13 +11,13 @@ export default function FilterBar({
   filters = [],
   onClearAll
 }: {
-  children: React.ReactNode;
+  children?: React.ReactNode;
   filters?: ActiveFilter[];
   onClearAll?: () => void;
 }) {
   return (
     <div className="flex flex-col gap-3">
-      <div className="admin-toolbar">{children}</div>
+      {children != null && <div className="admin-toolbar">{children}</div>}
       {filters.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-bold uppercase tracking-wide text-muted">Filtri attivi</span>

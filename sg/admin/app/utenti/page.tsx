@@ -95,6 +95,7 @@ function UsersPageInner() {
   const query: DataTableQuery = { page, perPage, sort, order };
 
   const [searchInput, setSearchInput] = useState(search);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [data, setData] = useState<AdminUsersPage | null>(null);
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -160,6 +161,8 @@ function UsersPageInner() {
     updateQuery({ search: "", status: "", created_from: "", created_to: "", page: "" });
   };
 
+  const advancedCount = (createdFrom ? 1 : 0) + (createdTo ? 1 : 0);
+
   return (
     <div className="admin-page">
       <h1 className="admin-title">Utenti</h1>
@@ -172,64 +175,123 @@ function UsersPageInner() {
         </p>
       )}
 
-      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filtro per stato">
-        {QUICK_FILTERS.map((filter) => {
-          const selected = status === filter.value;
-          return (
-            <button
-              key={filter.value || "all"}
-              type="button"
-              aria-pressed={selected}
-              onClick={() => updateQuery({ status: filter.value, page: "" })}
-              className={
-                selected
-                  ? "inline-flex items-center gap-2 rounded-full border border-brand bg-brand px-3 py-1.5 text-sm font-semibold text-white shadow-sm"
-                  : "inline-flex items-center gap-2 rounded-full border border-line bg-white px-3 py-1.5 text-sm font-semibold text-ink transition-colors hover:border-brand hover:text-brand"
-              }
+      <div className="card p-3 sm:p-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="field-input h-10 w-full flex-none sm:w-72">
+            <svg
+              className="h-4 w-4 flex-none text-muted"
+              viewBox="0 0 20 20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+              aria-hidden="true"
             >
-              {filter.dot && <span className={`h-2 w-2 rounded-full ${filter.dot}`} aria-hidden="true" />}
-              {filter.label}
-            </button>
-          );
-        })}
+              <circle cx="9" cy="9" r="6" />
+              <path d="m13.5 13.5 3.5 3.5" />
+            </svg>
+            <input
+              type="search"
+              placeholder="Cerca per username o email…"
+              value={searchInput}
+              onChange={(e) => onSearchChange(e.target.value)}
+            />
+          </span>
+
+          <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filtro per stato">
+            {QUICK_FILTERS.map((filter) => {
+              const selected = status === filter.value;
+              return (
+                <button
+                  key={filter.value || "all"}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => updateQuery({ status: filter.value, page: "" })}
+                  className={`inline-flex h-10 items-center gap-2 rounded-full border px-4 text-sm font-medium transition-colors ${
+                    selected
+                      ? "border-brand bg-brand text-white shadow-sm"
+                      : "border-line-strong bg-white text-ink hover:border-brand/50"
+                  }`}
+                >
+                  {filter.dot && (
+                    <span
+                      className={`h-2 w-2 rounded-full ${selected ? "bg-white" : filter.dot}`}
+                      aria-hidden="true"
+                    />
+                  )}
+                  {filter.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <button
+            type="button"
+            aria-expanded={advancedOpen}
+            onClick={() => setAdvancedOpen((open) => !open)}
+            className="ml-auto inline-flex h-10 items-center gap-2 rounded-lg border border-line-strong bg-white px-4 text-sm font-medium text-ink transition-colors hover:border-brand/50"
+          >
+            Filtri avanzati
+            {advancedCount > 0 && (
+              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-brand px-1.5 text-xs font-bold text-white">
+                {advancedCount}
+              </span>
+            )}
+            <svg
+              className={`h-4 w-4 transition-transform ${advancedOpen ? "rotate-180" : ""}`}
+              viewBox="0 0 20 20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="m5 8 5 5 5-5" />
+            </svg>
+          </button>
+        </div>
+
+        {advancedOpen && (
+          <div className="mt-3 border-t border-line pt-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="field">
+                <span className="field-label">Registrato dal</span>
+                <span className="field-input">
+                  <input
+                    type="date"
+                    value={createdFrom}
+                    onChange={(e) => updateQuery({ created_from: e.target.value, page: "" })}
+                  />
+                </span>
+              </label>
+              <label className="field">
+                <span className="field-label">Registrato al</span>
+                <span className="field-input">
+                  <input
+                    type="date"
+                    value={createdTo}
+                    onChange={(e) => updateQuery({ created_to: e.target.value, page: "" })}
+                  />
+                </span>
+              </label>
+            </div>
+            <div className="mt-3 flex justify-end">
+              <button
+                type="button"
+                onClick={clearAll}
+                className="text-sm font-semibold text-muted underline hover:text-brand"
+              >
+                Azzera filtri
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
-      <FilterBar filters={activeFilters} onClearAll={activeFilters.length > 1 ? clearAll : undefined}>
-        <span className="field-input admin-search">
-          <input
-            type="search"
-            placeholder="Cerca per username o email…"
-            value={searchInput}
-            onChange={(e) => onSearchChange(e.target.value)}
-          />
-        </span>
-      </FilterBar>
-
-      <details className="rounded-xl border border-line bg-surface px-4 py-3">
-        <summary className="cursor-pointer text-sm font-semibold text-brand">Filtri avanzati</summary>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          <label className="field">
-            <span className="field-label">Registrato dal</span>
-            <span className="field-input">
-              <input
-                type="date"
-                value={createdFrom}
-                onChange={(e) => updateQuery({ created_from: e.target.value, page: "" })}
-              />
-            </span>
-          </label>
-          <label className="field">
-            <span className="field-label">Registrato al</span>
-            <span className="field-input">
-              <input
-                type="date"
-                value={createdTo}
-                onChange={(e) => updateQuery({ created_to: e.target.value, page: "" })}
-              />
-            </span>
-          </label>
-        </div>
-      </details>
+      {activeFilters.length > 0 && (
+        <FilterBar filters={activeFilters} onClearAll={activeFilters.length > 1 ? clearAll : undefined} />
+      )}
 
       <DataTable
         columns={COLUMNS}

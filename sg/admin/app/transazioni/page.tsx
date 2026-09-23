@@ -181,36 +181,38 @@ function TransazioniPageInner() {
     <div className="admin-page">
       <h1 className="admin-title">Transazioni</h1>
 
-      <FilterBar filters={activeFilters} onClearAll={activeFilters.length > 1 ? clearAll : undefined}>
-        <select className="admin-select" value={type} onChange={(e) => updateQuery({ type: e.target.value, page: "" })}>
-          {TYPE_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-        <select className="admin-select" value={status} onChange={(e) => updateQuery({ status: e.target.value, page: "" })}>
-          {STATUS_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-        <input
-          type="date"
-          className="admin-select"
-          aria-label="Dal"
-          value={dateFrom}
-          onChange={(e) => updateQuery({ from: e.target.value, page: "" })}
-        />
-        <input
-          type="date"
-          className="admin-select"
-          aria-label="Al"
-          value={dateTo}
-          onChange={(e) => updateQuery({ to: e.target.value, page: "" })}
-        />
-      </FilterBar>
+      <div className="card p-3 sm:p-4">
+        <FilterBar filters={activeFilters} onClearAll={activeFilters.length > 1 ? clearAll : undefined}>
+          <select className="admin-select" value={type} onChange={(e) => updateQuery({ type: e.target.value, page: "" })}>
+            {TYPE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <select className="admin-select" value={status} onChange={(e) => updateQuery({ status: e.target.value, page: "" })}>
+            {STATUS_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <input
+            type="date"
+            className="admin-select"
+            aria-label="Dal"
+            value={dateFrom}
+            onChange={(e) => updateQuery({ from: e.target.value, page: "" })}
+          />
+          <input
+            type="date"
+            className="admin-select"
+            aria-label="Al"
+            value={dateTo}
+            onChange={(e) => updateQuery({ to: e.target.value, page: "" })}
+          />
+        </FilterBar>
+      </div>
 
       <DataTable
         columns={COLUMNS}
