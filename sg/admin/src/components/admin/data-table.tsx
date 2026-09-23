@@ -83,7 +83,7 @@ function TableView<T>({
   const rows = table.getRowModel().rows;
 
   return (
-    <div className={clsx("admin-table-wrap rounded-2xl border border-line bg-white shadow-sm", loading && "opacity-60")}>
+    <div className={clsx("admin-table-wrap rounded-[14px] border border-line bg-white shadow-card", loading && "opacity-60")}>
       <table className="admin-table">
         <thead>
           {table.getHeaderGroups().map((headerGroup) => (

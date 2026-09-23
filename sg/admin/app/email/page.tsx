@@ -102,7 +102,7 @@ function SectionCard({
   bodyClassName?: string;
 }) {
   return (
-    <section className={clsx("rounded-2xl border border-line bg-white shadow-sm", className)}>
+    <section className={clsx("rounded-[14px] border border-line bg-white shadow-card", className)}>
       {header && <div className="border-b border-line px-6 py-5">{header}</div>}
       <div className={clsx("px-6 py-6", bodyClassName)}>{children}</div>
     </section>
@@ -460,7 +460,7 @@ function EmailPageInner() {
                     "relative h-full rounded-xl border p-4 text-left transition-colors",
                     selected
                       ? "border-brand bg-brand/5 ring-2 ring-brand/40"
-                      : "border-line bg-white hover:border-brand/50 hover:bg-surface/60"
+                      : "border-line-strong bg-white shadow-card hover:border-brand/60 hover:bg-surface/60"
                   )}
                 >
                   {selected && (
@@ -562,7 +562,7 @@ function EmailPageInner() {
               <label className="field">
                 <span className="field-label">Messaggio *</span>
                 <textarea
-                  className="min-h-[220px] w-full resize-y rounded-xl border border-line bg-white px-4 py-3 text-sm leading-relaxed text-ink focus:border-brand focus:outline-none"
+                  className="min-h-[220px] w-full resize-y rounded-lg border border-line-strong bg-white px-4 py-3 text-sm leading-relaxed text-ink focus:border-brand focus:outline-none focus:ring-4 focus:ring-brand/10"
                   value={bodyText}
                   onChange={(e) => setBodyText(e.target.value)}
                   placeholder="Scrivi qui il testo dell'email, come se parlassi a un cliente…"
@@ -646,7 +646,7 @@ function EmailPageInner() {
         </SectionCard>
       </div>
 
-      <section className="rounded-2xl border border-line bg-white px-6 py-6 shadow-sm">
+      <section className="rounded-[14px] border border-line bg-white px-6 py-6 shadow-card">
         <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
           <StepHeading step={3} title="Invia" subtitle="Prima una prova a te, poi a tutti." />
           <div className="flex flex-col gap-2 md:items-end">

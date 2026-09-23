@@ -60,6 +60,8 @@ export type SubscriptionStats = {
   total?: number;
   past_due?: number;
   canceling?: number;
+  new_30d?: number;
+  canceled_30d?: number;
 };
 
 export type AdminStats = {

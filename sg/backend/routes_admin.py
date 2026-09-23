@@ -1154,16 +1154,16 @@ def get_stats():
         )
         paying_users = _exact_count(paying_result, paying_result.data or [])
 
-        # Subscriptions currently providing credits, grouped by plan. One
-        # paginated read of the bearing rows: the set is bounded by the user
-        # count, and PostgREST cannot GROUP BY. MRR sums the *current* plan
-        # price from the plans config, so it moves with a price change.
+        # Subscriptions, grouped by plan. One paginated read of every row — the
+        # set is bounded by the user count, PostgREST cannot GROUP BY, and the
+        # 30-day new/canceled counts need the rows a status filter would drop.
+        # MRR sums the *current* plan price from the plans config, so it moves
+        # with a price change.
         try:
             sub_rows = fetch_all(
                 lambda offset, limit: (
                     supabase.table("subscriptions")
-                    .select("plan_id, status, cancel_at_period_end")
-                    .in_("status", sorted(PLAN_BEARING_STATUSES))
+                    .select("plan_id, status, cancel_at_period_end, started_at, canceled_at")
                     .order("id")
                     .range(offset, offset + limit - 1)
                     .execute()
@@ -1177,10 +1177,22 @@ def get_stats():
             sub_rows = []
 
         plan_counts = {plan_id: 0 for plan_id in plans.order()}
+        total_bearing = 0
         past_due = 0
         canceling = 0
         mrr_cents = 0
+        new_30d = 0
+        canceled_30d = 0
         for row in sub_rows:
+            # Same lexicographic ISO-8601 date filter as the transaction window.
+            if str(row.get("started_at") or "") >= month_ago:
+                new_30d += 1
+            canceled_at = row.get("canceled_at")
+            if canceled_at and str(canceled_at) >= month_ago:
+                canceled_30d += 1
+            if (row.get("status") or "").lower() not in PLAN_BEARING_STATUSES:
+                continue
+            total_bearing += 1
             plan_id = row.get("plan_id")
             if plan_id in plan_counts:
                 plan_counts[plan_id] += 1
@@ -1192,9 +1204,11 @@ def get_stats():
                 canceling += 1
         subscriptions = {
             **plan_counts,
-            "total": len(sub_rows),
+            "total": total_bearing,
             "past_due": past_due,
             "canceling": canceling,
+            "new_30d": new_30d,
+            "canceled_30d": canceled_30d,
         }
 
         # Open support conversations and the operator's unread count. The chat

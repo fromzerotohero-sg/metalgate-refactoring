@@ -123,6 +123,14 @@ export default function PanoramicaPage() {
           value={subs?.total != null ? formatNumber(subs.total) : "—"}
           hint={subs ? `Lite ${formatNumber(subs.lite)} · Pro ${formatNumber(subs.pro)} · Ultra ${formatNumber(subs.ultra)}` : undefined}
         />
+        <StatCard
+          label="Attivazioni (30gg)"
+          value={subs?.new_30d != null ? formatNumber(subs.new_30d) : "—"}
+        />
+        <StatCard
+          label="Disdette (30gg)"
+          value={subs?.canceled_30d != null ? formatNumber(subs.canceled_30d) : "—"}
+        />
         <StatCard label="MRR stimato" value={stats.mrr != null ? formatEuro(stats.mrr) : "—"} />
         <StatCard label="Revenue 30 giorni" value={stats.revenue_30d != null ? formatEuro(stats.revenue_30d) : "—"} />
         <StatCard
