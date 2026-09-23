@@ -544,7 +544,7 @@ CAMPAIGN_USER_COLUMNS = (
 
 USER_LIST_COLUMNS = (
     "id, username, email, tag, credits_balance, temp_credits_balance, "
-    "email_verified, created_at, last_login, "
+    "email_verified, created_at, last_login, last_activity_at, "
     "referral_code, referred_by, referred_by_streamer, stripe_customer_id"
 )
 
@@ -1264,7 +1264,7 @@ def get_users():
         search = request.args.get("search", "").lower()
         status = request.args.get(
             "status", ""
-        )  # verified, unverified, active, inactive
+        )  # verified, unverified, active, inactive, today
 
         sort_params = _admin_sort_params(USER_SORT_COLUMNS, "created_at")
         if not sort_params:
@@ -1279,6 +1279,7 @@ def get_users():
 
         week_ago = (sessions.now() - timedelta(days=7)).isoformat()
         month_ago = (sessions.now() - timedelta(days=30)).isoformat()
+        day_ago = (sessions.now() - timedelta(hours=24)).isoformat()
 
         # Every page is rebuilt from the same filters. Paginated with `fetch_all`
         # because PostgREST caps one response at 1,000 rows: without it the user
@@ -1294,6 +1295,8 @@ def get_users():
                 query = query.gte("last_login", week_ago)
             elif status == "inactive":
                 query = query.lt("last_login", month_ago)
+            elif status == "today":
+                query = query.gte("last_login", day_ago)
 
             if created_from:
                 query = query.gte("created_at", created_from)

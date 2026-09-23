@@ -225,7 +225,10 @@ export type UsersQuery = {
   page?: number;
   per_page?: number;
   search?: string;
-  status?: string;
+  // Valori riconosciuti dal backend (routes_admin.py): verified | unverified |
+  // active | inactive | today. L'unione resta aperta a stringhe arbitrarie per
+  // non rompere query provenienti direttamente dall'URL.
+  status?: "verified" | "unverified" | "active" | "inactive" | "today" | (string & {});
   sort?: string;
   order?: "asc" | "desc";
   created_from?: string;

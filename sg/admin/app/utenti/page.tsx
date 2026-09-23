@@ -2,18 +2,37 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AdminApiError, adminApi, availableCredits, formatDate, formatNumber, type AdminUser, type AdminUsersPage } from "@/src/lib/admin-api";
+import { AdminApiError, adminApi, availableCredits, formatDate, formatNumber, type AdminStats, type AdminUser, type AdminUsersPage } from "@/src/lib/admin-api";
 import DataTable, { type ColumnDef, type DataTableQuery, type SortOrder } from "@/src/components/admin/data-table";
 import FilterBar, { type ActiveFilter } from "@/src/components/admin/filter-bar";
 import { VerifiedBadge } from "@/src/components/admin/badge";
+import { formatRelativeTime } from "@/src/components/admin/chat/time";
 
-const STATUS_OPTIONS = [
-  { value: "", label: "Tutti" },
-  { value: "verified", label: "Verificati" },
-  { value: "unverified", label: "Non verificati" },
-  { value: "active", label: "Attivi (7gg)" },
-  { value: "inactive", label: "Inattivi (30+ gg)" }
+const QUICK_FILTERS: { value: string; label: string; dot: string | null }[] = [
+  { value: "", label: "Tutti", dot: null },
+  { value: "today", label: "Attivi oggi", dot: "bg-green-500" },
+  { value: "active", label: "Attivi 7gg", dot: "bg-amber-500" },
+  { value: "inactive", label: "Inattivi", dot: "bg-slate-400" },
+  { value: "unverified", label: "Non verificati", dot: "bg-red-500" }
 ];
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function LastSeenCell({ value }: { value?: string | null }) {
+  if (!value) return <span className="text-muted">—</span>;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return <span className="text-muted">—</span>;
+  const age = Date.now() - date.getTime();
+  const dotClass =
+    age < DAY_MS ? "bg-green-500 animate-pulse" : age < 7 * DAY_MS ? "bg-amber-500" : "bg-slate-300";
+  const dotLabel = age < DAY_MS ? "Attivo oggi" : age < 7 * DAY_MS ? "Attivo negli ultimi 7 giorni" : "Inattivo";
+  return (
+    <span className="inline-flex items-center gap-2 whitespace-nowrap" title={formatDate(value)}>
+      <span className={`h-2 w-2 flex-none rounded-full ${dotClass}`} role="img" aria-label={dotLabel} />
+      {formatRelativeTime(value)}
+    </span>
+  );
+}
 
 const COLUMNS: ColumnDef<AdminUser, unknown>[] = [
   {
@@ -51,7 +70,13 @@ const COLUMNS: ColumnDef<AdminUser, unknown>[] = [
     id: "last_login",
     accessorKey: "last_login",
     header: "Ultimo accesso",
-    cell: ({ row }) => formatDate(row.original.last_login)
+    cell: ({ row }) => <LastSeenCell value={row.original.last_login} />
+  },
+  {
+    id: "last_activity_at",
+    accessorKey: "last_activity_at",
+    header: "Ultima attività",
+    cell: ({ row }) => <LastSeenCell value={row.original.last_activity_at} />
   }
 ];
 
@@ -71,6 +96,7 @@ function UsersPageInner() {
 
   const [searchInput, setSearchInput] = useState(search);
   const [data, setData] = useState<AdminUsersPage | null>(null);
+  const [stats, setStats] = useState<AdminStats | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -106,22 +132,28 @@ function UsersPageInner() {
       .finally(() => setLoading(false));
   }, [page, perPage, search, status, sort, order, createdFrom, createdTo]);
 
+  // Riepilogo "attivi oggi / totali" sopra la tabella: facoltativo, se /stats
+  // fallisce la riga semplicemente non compare.
+  useEffect(() => {
+    adminApi
+      .stats()
+      .then(setStats)
+      .catch(() => setStats(null));
+  }, []);
+
   const onSearchChange = (value: string) => {
     setSearchInput(value);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => updateQuery({ search: value, page: "" }), 400);
   };
 
-  const statusLabel = STATUS_OPTIONS.find((option) => option.value === status)?.label ?? status;
-
   const activeFilters = useMemo<ActiveFilter[]>(() => {
     const filters: ActiveFilter[] = [];
     if (search) filters.push({ id: "search", label: `Ricerca: ${search}`, onClear: () => { setSearchInput(""); updateQuery({ search: "", page: "" }); } });
-    if (status) filters.push({ id: "status", label: `Stato: ${statusLabel}`, onClear: () => updateQuery({ status: "", page: "" }) });
     if (createdFrom) filters.push({ id: "created_from", label: `Dal: ${createdFrom}`, onClear: () => updateQuery({ created_from: "", page: "" }) });
     if (createdTo) filters.push({ id: "created_to", label: `Al: ${createdTo}`, onClear: () => updateQuery({ created_to: "", page: "" }) });
     return filters;
-  }, [search, status, statusLabel, createdFrom, createdTo, updateQuery]);
+  }, [search, createdFrom, createdTo, updateQuery]);
 
   const clearAll = () => {
     setSearchInput("");
@@ -132,6 +164,36 @@ function UsersPageInner() {
     <div className="admin-page">
       <h1 className="admin-title">Utenti</h1>
 
+      {stats && (
+        <p className="text-sm font-semibold text-muted">
+          <span className="text-green-600">{formatNumber(stats.active_today)} attivi oggi</span>
+          {" · "}
+          {formatNumber(stats.total_users)} totali
+        </p>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filtro per stato">
+        {QUICK_FILTERS.map((filter) => {
+          const selected = status === filter.value;
+          return (
+            <button
+              key={filter.value || "all"}
+              type="button"
+              aria-pressed={selected}
+              onClick={() => updateQuery({ status: filter.value, page: "" })}
+              className={
+                selected
+                  ? "inline-flex items-center gap-2 rounded-full border border-brand bg-brand px-3 py-1.5 text-sm font-semibold text-white shadow-sm"
+                  : "inline-flex items-center gap-2 rounded-full border border-line bg-white px-3 py-1.5 text-sm font-semibold text-ink transition-colors hover:border-brand hover:text-brand"
+              }
+            >
+              {filter.dot && <span className={`h-2 w-2 rounded-full ${filter.dot}`} aria-hidden="true" />}
+              {filter.label}
+            </button>
+          );
+        })}
+      </div>
+
       <FilterBar filters={activeFilters} onClearAll={activeFilters.length > 1 ? clearAll : undefined}>
         <span className="field-input admin-search">
           <input
@@ -141,28 +203,33 @@ function UsersPageInner() {
             onChange={(e) => onSearchChange(e.target.value)}
           />
         </span>
-        <select className="admin-select" value={status} onChange={(e) => updateQuery({ status: e.target.value, page: "" })}>
-          {STATUS_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-        <input
-          type="date"
-          className="admin-select"
-          aria-label="Registrati dal"
-          value={createdFrom}
-          onChange={(e) => updateQuery({ created_from: e.target.value, page: "" })}
-        />
-        <input
-          type="date"
-          className="admin-select"
-          aria-label="Registrati al"
-          value={createdTo}
-          onChange={(e) => updateQuery({ created_to: e.target.value, page: "" })}
-        />
       </FilterBar>
+
+      <details className="rounded-xl border border-line bg-surface px-4 py-3">
+        <summary className="cursor-pointer text-sm font-semibold text-brand">Filtri avanzati</summary>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <label className="field">
+            <span className="field-label">Registrato dal</span>
+            <span className="field-input">
+              <input
+                type="date"
+                value={createdFrom}
+                onChange={(e) => updateQuery({ created_from: e.target.value, page: "" })}
+              />
+            </span>
+          </label>
+          <label className="field">
+            <span className="field-label">Registrato al</span>
+            <span className="field-input">
+              <input
+                type="date"
+                value={createdTo}
+                onChange={(e) => updateQuery({ created_to: e.target.value, page: "" })}
+              />
+            </span>
+          </label>
+        </div>
+      </details>
 
       <DataTable
         columns={COLUMNS}
