@@ -33,12 +33,12 @@ Il cookie di sessione è condiviso da **tutte** le piattaforme del brand
 dell'utente su tutte. Per questo il controllo più importante di questo deployment è la
 Content-Security-Policy.
 
-> **Nota (cutover).** In produzione il cookie è per ora **host-only**
-> (`SG_SESSION_COOKIE_DOMAIN` vuoto): `www.fromzerotohero.io` è ancora servito da
-> un'altra applicazione e un cookie `.fromzerotohero.io` verrebbe inviato anche lì.
-> Il frontend fa da proxy per `/api/*` sul proprio origin, quindi il cookie è
-> first-party e il login funziona comunque. La CSP resta comunque il controllo più
-> importante.
+> **Nota.** In produzione il cookie è **condiviso** (`SG_SESSION_COOKIE_DOMAIN` =
+> `.fromzerotohero.io`), quindi viene inviato a ogni host sotto il dominio — inclusi
+> l'apex e `www`, ancora serviti dal sito marketing su Cloudflare. Il frontend fa da
+> proxy per `/api/*` sul proprio origin, quindi il cookie è first-party e il login
+> funziona; la CSP resta comunque il controllo più importante, proprio perché il raggio
+> del cookie è l'intero dominio.
 
 - **`middleware.ts`** genera un nonce per richiesta e imposta la CSP con `script-src
   'nonce-…' 'strict-dynamic'`. Un nonce (e non `'unsafe-inline'`) è l'unica forma che

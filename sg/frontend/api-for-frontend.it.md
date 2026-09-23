@@ -61,13 +61,12 @@ vecchio `login.html`.
 Tutti i percorsi seguenti sono relativi a quella base. Quindi `GET /api/session`
 significa `GET https://v2.fromzerotohero.io/api/session`.
 
-Il frontend è servito da `https://silver.fromzerotohero.io` e l'API da
+Il frontend è servito dall'apex, `https://fromzerotohero.io`, e l'API da
 `https://v2.fromzerotohero.io` — lo stesso dominio registrabile. Il browser parla
 solo con il frontend, che fa da proxy per `/api/*` verso l'API, quindi il cookie di
 sessione resta first-party: le chiamate sono same-site e non serve alcun handshake
-di redirect. È questo che fa funzionare il login condiviso. (`silver.` è un hostname
-temporaneo per il frontend; `v2.` è quello definitivo dell'API — se il frontend
-cambia nome, cambia solo l'ambiente del frontend.)
+di redirect. È questo che fa funzionare il login condiviso. (`v2.` è l'hostname
+definitivo dell'API; il frontend ha risposto su `silver.` durante il cutover.)
 
 ---
 
@@ -330,7 +329,7 @@ il piano corrente e la call to action per l'upgrade.
     "next_plan": { "id": "ultra", "name": "Ultra", "credits_per_period": 750,
                    "price_display": "€29.99", "interval": "month" },
     "cta_label": "Upgrade to Ultra to have higher limits",
-    "url": "https://silver.fromzerotohero.io/pricing"
+    "url": "https://fromzerotohero.io/pricing"
   }
 }
 ```
@@ -450,7 +449,7 @@ quando clicca il link nell'email di verifica. Quindi dopo la registrazione mostr
 ### Link di verifica
 
 Il link nell'email punta alla pagina del **frontend** (`SG_EMAIL_VERIFICATION_URL`,
-`https://silver.fromzerotohero.io/verify-email` per default) e porta `?token=…` e, se la
+`https://fromzerotohero.io/verify-email` per default) e porta `?token=…` e, se la
 registrazione ne ha passato uno, `&redirect=…`. Quella pagina chiama l'endpoint qui
 sotto, che imposta il cookie di sessione, quindi l'utente è autenticato senza aver mai
 compilato un form di login.

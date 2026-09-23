@@ -110,7 +110,6 @@ def _plan_order(plans: dict) -> list:
 # Origins used before SG_CORS_ORIGINS is configured. These mirror the set that
 # the previous deployment served, plus local development.
 _DEFAULT_CORS_ORIGINS = [
-    "https://silver.fromzerotohero.io",
     "https://fromzerotohero.io",
     "https://efootball.fromzerotohero.io",
     "https://tornei.fromzerotohero.io",
@@ -224,17 +223,17 @@ class Config:
     # not name one. An explicit `expires_at`/`expires_in_days` always wins.
     TEMP_GRANT_TTL_DAYS = _int("SG_TEMP_GRANT_TTL_DAYS", 7)
 
-    # ── Public URLs ─────────────────────────────────────────────────────────
-    # The frontend is served from `silver.` and the API from `v2.`, both under the
+    # ── Public URLs ───────────────────────────────────────────────────
+    # The frontend is served from the apex and the API from `v2.`, both under the
     # same registrable domain. The browser only ever talks to the frontend, which
     # proxies /api/* to this service, so the session cookie stays first-party and
     # the flow is same-site (`SameSite=Lax` is enough) with no redirect handshake.
     #
-    # `silver.` is a TEMPORARY hostname for the frontend; the API's `v2.` is
-    # intended to be permanent. Renaming the frontend touches only the values here
-    # and in the deployment's environment — nothing in the code depends on either
-    # name, so there is nothing else to change.
-    APP_URL = (os.environ.get("SG_APP_URL") or "https://silver.fromzerotohero.io").rstrip("/")
+    # The apex is the frontend's home and `v2.` the API's, both permanent. The
+    # frontend answered on `silver.` during the cutover, so a deployed SG_APP_URL
+    # may still name it until the hostname is switched over; the value below is
+    # only the fallback used when that variable is unset.
+    APP_URL = (os.environ.get("SG_APP_URL") or "https://fromzerotohero.io").rstrip("/")
     LOGIN_URL = os.environ.get("SG_LOGIN_URL") or f"{APP_URL}/login"
     # Where a user is sent when we have no better destination: after verifying from a
     # link that carried no `redirect`, and when returning from the Stripe portal.

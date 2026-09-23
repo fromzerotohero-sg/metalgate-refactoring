@@ -514,9 +514,12 @@ implementation against the published RFC 6238 test vectors.
   consequence of the requirement: one cookie on `.fromzerotohero.io` is what makes "log
   in once" work, so a script injected into any one platform can read the session for all
   of them. Mitigation belongs in the frontends (a strict CSP on every platform) and in
-  keeping the cookie `HttpOnly` everywhere. There is no server-side fix. *(Interim: the
-  cutover deployment keeps the cookie host-only while `www.fromzerotohero.io` still
-  serves another application, which contains the blast radius but not the design.)*
+  keeping the cookie `HttpOnly` everywhere. There is no server-side fix. *(The deployment
+  enables the shared cookie — `SG_SESSION_COOKIE_DOMAIN=.fromzerotohero.io`,
+  `SG_REQUIRE_SHARED_COOKIE=true` — so the radius includes the Cloudflare-hosted
+  apex/`www` marketing site, which the product owner accepted as a brand-owned host.
+  It stops being an outside host once the frontend takes over the apex; see
+  `DEPLOYMENT.md` §6.)*
 - **A sibling subdomain can overwrite the shared cookie.** Same root cause.
 - **The admin audit log records actions, not intent** — method, path, status, address.
   It answers "what was touched", not "was that a good idea". Real operator identities
@@ -585,9 +588,10 @@ Set in the API project:
 - All required secrets, plus `SUPABASE_URL` / `SUPABASE_KEY` (service-role; server-side only).
 - `SG_SESSION_COOKIE_DOMAIN=.fromzerotohero.io` — **a custom domain is mandatory.**
   `vercel.app` is on the Public Suffix List, so browsers reject cookies scoped to it.
-  *(Interim: on the current cutover it is empty/host-only for the reason above, with
-  `SG_REQUIRE_SHARED_COOKIE=false`. Restore both together once every
-  `*.fromzerotohero.io` host is SilverGate's.)*
+  *(Enabled, together with `SG_REQUIRE_SHARED_COOKIE=true`: cross-platform sign-on is
+  live. The Cloudflare-hosted apex/`www` marketing site therefore sits inside the
+  cookie's radius by accepted product decision; see `DEPLOYMENT.md` §5 and the rename
+  checklist in §6.)*
 - `SG_RATELIMIT_STORAGE_URI` — a shared store (e.g. `rediss://…`). The default
   `memory://` enforces nothing across serverless instances, and production
   refuses to start with it.

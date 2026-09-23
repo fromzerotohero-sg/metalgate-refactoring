@@ -1,9 +1,47 @@
+# ── Secrets ──────────────────────────────────────────────────────────────────
+# No env file is ever committed. The `.env.example` reference files are the only
+# tracked exception.
+.env
+.env.*
+!.env.example
+
+# ── Superseded reference checkout ────────────────────────────────────────────
+# `ss4/` is the previous implementation, kept for reference. It is ~700 MB and
+# `ss4/ss3/.env.production` holds LIVE production credentials in plaintext: a
+# Stripe live secret key, a webhook signing secret, a Resend API key and the
+# Supabase service-role JWT.
+#
+# It is deliberately not versioned: committing it would publish those secrets to
+# everyone with repository access and add hundreds of megabytes to every clone,
+# neither of which buys anything (nothing under `ss4/` is deployed).
+#
+# If you genuinely intend to version it, delete the next line — and rotate every
+# credential in that file first, because it would then be in the git history
+# permanently.
+ss4/
+
+# ── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ── Virtualenvs ──────────────────────────────────────────────────────────────
+.venv/
+venv/
+.simvenv/
+
+# ── Node / Next.js ───────────────────────────────────────────────────────────
 node_modules/
 .next/
 out/
-.env*
-!.env.example
-*.log
-.vercel/
 *.tsbuildinfo
-work/
+
+# ── Vercel ───────────────────────────────────────────────────────────────────
+.vercel/
+
+# ── Editors / OS ─────────────────────────────────────────────────────────────
+.DS_Store
+.idea/
+.vscode/
