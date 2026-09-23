@@ -131,7 +131,7 @@
 }
 .admin-exit:hover { border-color: var(--cyan); color: var(--cyan); }
 
-.admin-main { max-width: 1120px; margin: 0 auto; padding: 32px 24px 64px; }
+.admin-main { max-width: none; margin: 0 auto; padding: 32px 40px 64px; }
 .admin-page { display: flex; flex-direction: column; gap: 22px; }
 .admin-title { font-size: 24px; font-weight: 700; color: var(--ink); letter-spacing: -0.01em; }
 .admin-back { color: var(--blue); font-weight: 600; font-size: 14px; text-decoration: none; }
