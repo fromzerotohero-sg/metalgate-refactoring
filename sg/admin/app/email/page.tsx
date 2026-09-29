@@ -21,6 +21,7 @@ import { useToast } from "@/src/components/admin/toast";
 
 const PREVIEW_DEBOUNCE_MS = 500;
 const RENDER_DEBOUNCE_MS = 800;
+const CTA_MARKER = "[[pulsante]]";
 
 type Preset = { id: string; label: string; description: string; filters: CampaignFilters };
 
@@ -195,9 +196,47 @@ function EmailPageInner() {
   const [ctaEnabled, setCtaEnabled] = useState(false);
   const [ctaText, setCtaText] = useState("");
   const [ctaUrl, setCtaUrl] = useState("");
+  const bodyRef = useRef<HTMLTextAreaElement | null>(null);
 
   const hasCta = ctaEnabled && Boolean(ctaText.trim()) && Boolean(ctaUrl.trim());
+  const ctaPlaced = bodyText.includes(CTA_MARKER);
   const hasContent = Boolean(subject.trim() || bodyText.trim());
+
+  const placeCtaInText = () => {
+    const el = bodyRef.current;
+    let cursor = el?.selectionStart ?? bodyText.length;
+    let text = bodyText;
+    const markerAt = text.indexOf(CTA_MARKER);
+    if (markerAt >= 0) {
+      text = text.slice(0, markerAt) + text.slice(markerAt + CTA_MARKER.length);
+      if (cursor > markerAt) cursor -= CTA_MARKER.length;
+    }
+    cursor = Math.max(0, Math.min(cursor, text.length));
+    const head = text.slice(0, cursor).replace(/\s+$/, "");
+    const tail = text.slice(cursor).replace(/^\s+/, "");
+    const beforeGap = head ? "\n\n" : "";
+    const afterGap = tail ? "\n\n" : "";
+    const next = `${head}${beforeGap}${CTA_MARKER}${afterGap}${tail}`;
+    setBodyText(next);
+    const caret = head.length + beforeGap.length + CTA_MARKER.length;
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(caret, caret);
+    });
+  };
+
+  const clearCta = () => {
+    setCtaEnabled(false);
+    setCtaText("");
+    setCtaUrl("");
+    setBodyText((current) =>
+      current
+        .split(CTA_MARKER)
+        .join("")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim()
+    );
+  };
 
   // ── Anteprima live ───────────────────────────────────────────────
   const [renderHtml, setRenderHtml] = useState<string | null>(null);
@@ -562,6 +601,7 @@ function EmailPageInner() {
               <label className="field">
                 <span className="field-label">Messaggio *</span>
                 <textarea
+                  ref={bodyRef}
                   className="min-h-[220px] w-full resize-y rounded-lg border border-line-strong bg-white px-4 py-3 text-sm leading-relaxed text-ink focus:border-brand focus:outline-none focus:ring-4 focus:ring-brand/10"
                   value={bodyText}
                   onChange={(e) => setBodyText(e.target.value)}
@@ -582,7 +622,7 @@ function EmailPageInner() {
               >
                 <span>
                   <span className="block text-sm font-semibold text-ink">Aggiungi un pulsante (CTA)</span>
-                  <span className="mt-0.5 block text-xs text-muted">Opzionale: un bottone con link in fondo all&apos;email.</span>
+                  <span className="mt-0.5 block text-xs text-muted">Opzionale: un bottone che metti tu nel punto del testo che vuoi.</span>
                 </span>
                 <span className="flex-none text-sm font-semibold text-brand">Aggiungi</span>
               </button>
@@ -593,11 +633,7 @@ function EmailPageInner() {
                   <button
                     type="button"
                     className="flex-none text-sm font-semibold text-muted underline hover:text-ink"
-                    onClick={() => {
-                      setCtaEnabled(false);
-                      setCtaText("");
-                      setCtaUrl("");
-                    }}
+                    onClick={clearCta}
                   >
                     Rimuovi
                   </button>
@@ -616,9 +652,22 @@ function EmailPageInner() {
                     </span>
                   </label>
                 </div>
-                <p className="mt-3 text-xs text-muted">
-                  {hasCta ? "Il pulsante comparirà in fondo all'email." : "Servono sia il testo sia il link."}
-                </p>
+                <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-xs text-muted">
+                    {!hasCta
+                      ? "Servono sia il testo sia il link."
+                      : ctaPlaced
+                        ? "Il pulsante è nel messaggio. Taglia la riga [[pulsante]] e incollala dove la vuoi."
+                        : "Senza un punto scelto, il pulsante resta in fondo."}
+                  </p>
+                  <button
+                    type="button"
+                    className="flex-none text-sm font-semibold text-brand hover:underline"
+                    onClick={placeCtaInText}
+                  >
+                    {ctaPlaced ? "Sposta il pulsante qui" : "Metti il pulsante nel testo"}
+                  </button>
+                </div>
               </div>
             )}
           </div>

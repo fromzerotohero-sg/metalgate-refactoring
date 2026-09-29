@@ -510,6 +510,24 @@ Non rispondere a questa email.
 # Building a campaign email is 170 lines of HTML that belongs beside the other
 # templates, not inside a Flask route module.
 
+def sanitize_cta_url(value) -> str:
+    """
+    An absolute http(s) URL, or a bare host turned into one.
+
+    A value without a scheme is a relative link. Gmail resolves it inside
+    mail.google.com, so the button looks present and the click goes nowhere.
+    """
+    raw = str(value or "").strip()
+    if not raw or any(c in raw for c in (" ", "\n", "\r", "\t")):
+        return ""
+    lowered = raw.lower()
+    if lowered.startswith(("javascript:", "data:", "file:")):
+        return ""
+    if not (lowered.startswith("https://") or lowered.startswith("http://")):
+        raw = "https://" + raw.lstrip("/")
+    return raw
+
+
 def sanitize_image_src(value) -> str:
     """
     Accept only an absolute http(s) URL or a small inline `data:image/` value.
@@ -527,11 +545,24 @@ def sanitize_image_src(value) -> str:
     return ""
 
 
+# The operator drops this line in the message and moves it. The sent mail
+# replaces it with the button; it is never shown to the recipient.
+CTA_MARKER = "[[pulsante]]"
+_BODY_P_STYLE = "margin: 0 0 20px 0; font-size: 16px; line-height: 1.8; color: #d7d0ea;"
+
+
+def _campaign_paragraph(text: str) -> str:
+    cleaned = text.strip()
+    if not cleaned:
+        return ""
+    escaped = html.escape(cleaned).replace("\n", "<br>")
+    return f'<p style="{_BODY_P_STYLE}">{escaped}</p>'
+
+
 def build_campaign_bodies(payload: dict, username: str | None) -> tuple:
     """Render one campaign email for one recipient: ``(html, text)``."""
     heading = html.escape(str(payload.get("heading", "")).strip())
     intro = html.escape(str(payload.get("intro_text", "")).strip()).replace("\n", "<br>")
-    body = html.escape(str(payload.get("body_text", "")).strip()).replace("\n", "<br>")
     cta_text = html.escape(str(payload.get("cta_text", "")).strip())
     cta_url = str(payload.get("cta_url", "")).strip()
     banner_image = sanitize_image_src(payload.get("banner_image"))
@@ -543,24 +574,44 @@ def build_campaign_bodies(payload: dict, username: str | None) -> tuple:
 
     cta_html = ""
     cta_text_line = ""
-    if cta_text and cta_url:
-        safe_url = html.escape(cta_url, quote=True)
+    safe_cta_url = sanitize_cta_url(cta_url)
+    if cta_text and safe_cta_url:
+        safe_url = html.escape(safe_cta_url, quote=True)
+        # Solid background-color first. Gmail drops linear-gradient, and without
+        # a fallback the label (#080611) sits on the dark page and the button
+        # vanishes. The table cell is what Outlook and Gmail actually click.
         cta_html = f"""
-            <div style="text-align: center; margin: 36px 0 32px 0;">
-                <a href="{safe_url}" style="
-                    display: inline-block;
-                    background: linear-gradient(90deg, #BD9FED 0%, #60B0CA 100%);
-                    color: #080611;
-                    font-size: 16px;
-                    font-weight: 800;
-                    text-decoration: none;
-                    padding: 14px 36px;
-                    border-radius: 8px;
-                    letter-spacing: 0.5px;
-                ">{cta_text}</a>
-            </div>
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin: 36px auto 32px auto;">
+              <tr>
+                <td align="center" bgcolor="#BD9FED" style="background-color: #BD9FED; border-radius: 8px;">
+                  <a href="{safe_url}" target="_blank" style="display: inline-block; background-color: #BD9FED; color: #080611; font-size: 16px; font-weight: 800; text-decoration: none; padding: 14px 36px; border-radius: 8px; letter-spacing: 0.5px;">{cta_text}</a>
+                </td>
+              </tr>
+            </table>
         """
-        cta_text_line = f"\n\n{cta_text}: {cta_url}"
+        cta_text_line = f"\n\n{cta_text}: {safe_cta_url}"
+
+    raw_body = str(payload.get("body_text", "")).strip()
+    placed = CTA_MARKER in raw_body
+    if placed:
+        before, _, rest = raw_body.partition(CTA_MARKER)
+        after = rest.replace(CTA_MARKER, "")
+    else:
+        before, after = raw_body, ""
+
+    # The marker is the operator's choice. Without it the button stays at the
+    # bottom, as before. A marker with no button is removed, never mailed.
+    if placed and cta_html:
+        body_block = _campaign_paragraph(before) + cta_html + _campaign_paragraph(after)
+        trailing_cta = ""
+        plain_body = f"{before.strip()}\n\n{cta_text}: {safe_cta_url}\n\n{after.strip()}".strip()
+        trailing_cta_text = ""
+    else:
+        visible = raw_body.replace(CTA_MARKER, "") if placed else raw_body
+        body_block = f'<p style="{_BODY_P_STYLE}">{html.escape(visible).replace(chr(10), "<br>")}</p>'
+        trailing_cta = cta_html
+        plain_body = visible.strip()
+        trailing_cta_text = cta_text_line
 
     logo_block = ""
     if logo_image:
@@ -652,16 +703,11 @@ def build_campaign_bodies(payload: dict, username: str | None) -> tuple:
                       line-height: 1.8;
                       color: #d7d0ea;
                     ">{intro}</p>
-                    <p style="
-                      margin: 0 0 20px 0;
-                      font-size: 16px;
-                      line-height: 1.8;
-                      color: #d7d0ea;
-                    ">{body}</p>
+                    {body_block}
 
                     {footer_note_block}
 
-                    {cta_html}
+                    {trailing_cta}
                   </td>
                 </tr>
                 <tr>
@@ -690,11 +736,11 @@ def build_campaign_bodies(payload: dict, username: str | None) -> tuple:
         f"{heading}\n\n"
         f"Ciao {username or 'utente'},\n\n"
         f"{str(payload.get('intro_text', '')).strip()}\n\n"
-        f"{str(payload.get('body_text', '')).strip()}\n\n"
+        f"{plain_body}\n\n"
         f"{str(payload.get('footer_note', '')).strip()}\n\n"
         "© 2025 From Zero To Hero — Tutti i diritti riservati\n"
         "Non rispondere a questa email."
-        f"{cta_text_line}"
+        f"{trailing_cta_text}"
     )
 
     return html_body, text_body

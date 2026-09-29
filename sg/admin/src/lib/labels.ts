@@ -5,7 +5,9 @@
 
 export const SERVICE_LABELS: Record<string, string> = {
   "assistant-chat": "Chat IA",
-  internal: "SilverGate"
+  internal: "SilverGate",
+  efootball: "eFootball",
+  "non attribuito": "Non attribuito"
 };
 
 export const TRANSACTION_TYPE_LABELS: Record<string, string> = {

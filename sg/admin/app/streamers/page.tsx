@@ -14,6 +14,7 @@ import {
 import DataTable, { type ColumnDef, type DataTableQuery, type SortOrder } from "@/src/components/admin/data-table";
 import FilterBar, { type ActiveFilter } from "@/src/components/admin/filter-bar";
 import Badge from "@/src/components/admin/badge";
+import { useLiveTick } from "@/src/lib/use-live-tick";
 
 const MANAGED_OPTIONS = [
   { value: "", label: "Tutti" },
@@ -106,6 +107,8 @@ function StreamersPageInner() {
   const perPage = Math.max(1, parseInt(searchParams.get("per_page") ?? "20", 10) || 20);
   const search = searchParams.get("search") ?? "";
   const managed = searchParams.get("managed") ?? "";
+  const referrals = searchParams.get("referrals") ?? "";
+  const createdWindow = searchParams.get("created") ?? "";
   const sort = searchParams.get("sort") ?? undefined;
   const order: SortOrder | undefined = searchParams.get("order") === "asc" ? "asc" : sort ? "desc" : undefined;
 
@@ -113,10 +116,11 @@ function StreamersPageInner() {
 
   const [searchInput, setSearchInput] = useState(search);
   const [streamers, setStreamers] = useState<StreamerListItem[]>([]);
-  const [total, setTotal] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loaded = useRef(false);
+  const tick = useLiveTick();
 
   const updateQuery = useCallback(
     (updates: Record<string, string>) => {
@@ -132,7 +136,7 @@ function StreamersPageInner() {
   );
 
   useEffect(() => {
-    setLoading(true);
+    if (!loaded.current) setLoading(true);
     setError(null);
     const base = {
       search,
@@ -150,16 +154,31 @@ function StreamersPageInner() {
         throw err;
       })
       .then((res) => {
+        loaded.current = true;
         setStreamers(res.streamers);
-        setTotal(res.total);
       })
       .catch((err) => setError(err.message ?? "Errore nel caricamento"))
       .finally(() => setLoading(false));
-  }, [search, managed, sort, order]);
+  }, [tick, search, managed, sort, order]);
 
   // L'endpoint restituisce la lista completa già ordinata/filtrata dal server:
   // la paginazione è una vista sulla lista caricata.
-  const pageRows = useMemo(() => streamers.slice((page - 1) * perPage, page * perPage), [streamers, page, perPage]);
+  const visibleStreamers = useMemo(() => {
+    let rows = streamers;
+    if (referrals === "0") rows = rows.filter((row) => (row.referred_num ?? 0) <= 0);
+    if (createdWindow === "30d") {
+      const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+      rows = rows.filter((row) => {
+        const created = row.created_at ? new Date(row.created_at).getTime() : NaN;
+        return !Number.isNaN(created) && created >= cutoff;
+      });
+    }
+    return rows;
+  }, [streamers, referrals, createdWindow]);
+  const pageRows = useMemo(
+    () => visibleStreamers.slice((page - 1) * perPage, page * perPage),
+    [visibleStreamers, page, perPage]
+  );
 
   const onSearchChange = (value: string) => {
     setSearchInput(value);
@@ -173,12 +192,18 @@ function StreamersPageInner() {
     const filters: ActiveFilter[] = [];
     if (search) filters.push({ id: "search", label: `Ricerca: ${search}`, onClear: () => { setSearchInput(""); updateQuery({ search: "", page: "" }); } });
     if (managed) filters.push({ id: "managed", label: `Gestione: ${managedLabel}`, onClear: () => updateQuery({ managed: "", page: "" }) });
+    if (referrals === "0") {
+      filters.push({ id: "referrals", label: "Senza referral", onClear: () => updateQuery({ referrals: "", page: "" }) });
+    }
+    if (createdWindow === "30d") {
+      filters.push({ id: "created", label: "Creati negli ultimi 30 giorni", onClear: () => updateQuery({ created: "", page: "" }) });
+    }
     return filters;
-  }, [search, managed, managedLabel, updateQuery]);
+  }, [search, managed, managedLabel, referrals, createdWindow, updateQuery]);
 
   const clearAll = () => {
     setSearchInput("");
-    updateQuery({ search: "", managed: "", page: "" });
+    updateQuery({ search: "", managed: "", referrals: "", created: "", page: "" });
   };
 
   return (
@@ -211,7 +236,7 @@ function StreamersPageInner() {
       <DataTable
         columns={COLUMNS}
         rows={pageRows}
-        total={total}
+        total={visibleStreamers.length}
         query={query}
         loading={loading}
         error={error}

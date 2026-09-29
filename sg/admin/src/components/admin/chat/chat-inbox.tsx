@@ -26,6 +26,7 @@ export default function ChatInbox() {
   const [status, setStatus] = useState<"open" | "closed" | "all">("open");
   const [search, setSearch] = useState("");
   const [conversations, setConversations] = useState<ChatConversationSummary[]>([]);
+  const [listTotal, setListTotal] = useState(0);
   const [selected, setSelected] = useState<ChatConversationSummary | null>(null);
   const [thread, setThread] = useState<ChatThread | null>(null);
   const [reply, setReply] = useState("");
@@ -41,6 +42,7 @@ export default function ChatInbox() {
     try {
       const result = await adminChatApi.conversations({ status, search: search.trim() || undefined, per_page: 50 });
       setConversations(result.conversations);
+      setListTotal(result.total);
     } catch (caught) {
       const apiError = caught as AdminChatApiError;
       setError(apiError.message || "Non è stato possibile caricare le chat.");
@@ -132,7 +134,10 @@ export default function ChatInbox() {
           <h1 className="admin-title">Chat con gli utenti</h1>
           <p>Leggi le richieste, rispondi al cliente e mantieni ogni conversazione ordinata.</p>
         </div>
-        <div className="admin-chat-summary"><strong>{conversations.filter((item) => item.status === "open").length}</strong><span>chat aperte</span></div>
+        <div className="admin-chat-summary">
+          <strong>{listTotal}</strong>
+          <span>{status === "closed" ? "chat chiuse" : status === "all" ? "chat" : "chat aperte"}</span>
+        </div>
       </header>
 
       {error && <p className="admin-error" role="alert">{error}</p>}
@@ -151,6 +156,9 @@ export default function ChatInbox() {
           <div className="admin-chat-list">
             {loadingInbox && <p className="admin-loading">Caricamento chat…</p>}
             {!loadingInbox && !conversations.length && <p className="admin-empty">Nessuna chat trovata con questi filtri.</p>}
+            {listTotal > conversations.length && (
+              <p className="admin-muted">Mostrate {conversations.length} di {listTotal}.</p>
+            )}
             {conversations.map((conversation) => (
               <button
                 type="button"

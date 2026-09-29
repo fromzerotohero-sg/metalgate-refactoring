@@ -42,7 +42,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   if (adminCode) headers.set("X-Admin-Code", adminCode);
 
-  const response = await fetch(`${API_BASE}${path}`, { ...init, headers });
+  const response = await fetch(`${API_BASE}${path}`, { ...init, headers, cache: "no-store" });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     if (response.status === 401) unauthorizedHandler?.();
@@ -130,6 +130,7 @@ export type AdminUserDetail = {
   user: AdminUser & Record<string, unknown>;
   transactions: AdminTransaction[];
   stats: { total_bought: number; total_spent: number; total_revenue: number; transaction_count: number };
+  service_breakdown?: { service: string; credits: number; count: number }[];
   referred_users: { id: string; username?: string; email?: string }[];
 };
 

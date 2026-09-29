@@ -42,7 +42,7 @@ from credits import (
 )
 from email_service import MAX_BATCH_SIZE, EmailService, build_campaign_bodies
 from extensions import limiter
-from pagination import DEFAULT_PAGE_SIZE as MAX_PAGE_SIZE, fetch_all
+from pagination import DEFAULT_PAGE_SIZE as MAX_PAGE_SIZE, chunked, fetch_all
 from routes_chat import (
     MAX_MESSAGE_LENGTH as MAX_CHAT_MESSAGE_LENGTH,
     MAX_OPEN_CONVERSATIONS_PER_USER,
@@ -308,6 +308,83 @@ def _admin_sort_params(allowed: tuple, default: str, default_desc: bool = True):
         return None
     descending = default_desc if not order else order == "desc"
     return sort, descending
+
+
+def _utc_today_start() -> str:
+    """
+    Start of the current UTC day.
+
+    `logged_today` on `/stats` and the user-list filter `status=today` both use
+    this bound, so the dashboard card and the list it opens count the same
+    people. A rolling 24h window is a different number (`active_today`).
+    """
+    return sessions.now().replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+
+
+def _spender_ids_since(supabase, since_iso: str) -> list:
+    """
+    Distinct users with a credit-out ledger row at or after `since_iso`.
+
+    Same predicate as `users_spent_today` (`is_credit_out`), so the dashboard
+    card and `status=spent_today` stay equal.
+    """
+    rows = fetch_all(
+        lambda offset, limit: (
+            supabase.table("transactions")
+            .select("user_id, amount, type")
+            .gte("timestamp", since_iso)
+            .order("id")
+            .range(offset, offset + limit - 1)
+            .execute()
+            .data
+        )
+    )
+    return sorted(
+        {
+            str(row.get("user_id"))
+            for row in rows
+            if row.get("user_id") and is_credit_out(row)
+        }
+    )
+
+
+def _service_breakdown(supabase, user_id: str) -> list:
+    """
+    Credits spent by service for one user, over the whole ledger.
+
+    The detail page only shows the last 50 transactions. Summing those made
+    "Crediti per servizio" disagree with "Crediti spesi". Rows with no `service`
+    stay in "non attribuito" — historical eFootball spend was stored that way
+    and is not rewritten here.
+    """
+    try:
+        rows = fetch_all(
+            lambda offset, limit: (
+                supabase.table("transactions")
+                .select("amount, type, service")
+                .eq("user_id", user_id)
+                .order("id")
+                .range(offset, offset + limit - 1)
+                .execute()
+                .data
+            )
+        )
+    except Exception as exc:
+        logger.warning("service breakdown unavailable for %s: %s", user_id, exc)
+        return []
+
+    buckets: dict = {}
+    for row in rows:
+        if not is_credit_out(row):
+            continue
+        key = str(row.get("service") or "").strip() or "non attribuito"
+        entry = buckets.setdefault(key, {"credits": 0, "count": 0})
+        entry["credits"] += abs(_safe_int(row.get("amount"), 0))
+        entry["count"] += 1
+    return [
+        {"service": key, "credits": data["credits"], "count": data["count"]}
+        for key, data in sorted(buckets.items(), key=lambda item: item[1]["credits"], reverse=True)
+    ]
 
 
 def _date_bound(value, *, end_of_day: bool):
@@ -1095,12 +1172,10 @@ def get_stats():
         )
         active_today = _exact_count(active_result, active_result.data or [])
 
-        # Logged in today, on the UTC calendar day — same lexicographic ISO
-        # comparison as the 30d window below. `active_today` stays a rolling
-        # 24h count; this one resets at midnight.
-        today_start = (
-            sessions.now().replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
-        )
+        # Logged in today, on the UTC calendar day — the same bound as the
+        # user-list filter `status=today`. `active_today` stays a rolling 24h
+        # count; this one resets at midnight.
+        today_start = _utc_today_start()
         logged_result = (
             supabase.table("users")
             .select("id", count="exact")
@@ -1306,7 +1381,7 @@ def get_users():
         search = request.args.get("search", "").lower()
         status = request.args.get(
             "status", ""
-        )  # verified, unverified, active, inactive, today
+        )  # verified, unverified, active, inactive, today, spent_today
 
         sort_params = _admin_sort_params(USER_SORT_COLUMNS, "created_at")
         if not sort_params:
@@ -1321,13 +1396,21 @@ def get_users():
 
         week_ago = (sessions.now() - timedelta(days=7)).isoformat()
         month_ago = (sessions.now() - timedelta(days=30)).isoformat()
-        day_ago = (sessions.now() - timedelta(hours=24)).isoformat()
+        # `today` matches `/stats` `logged_today` (UTC midnight), not a rolling
+        # 24h window. `spent_today` matches `users_spent_today`.
+        today_start = _utc_today_start()
+        id_chunks = (
+            chunked(_spender_ids_since(supabase, today_start))
+            if status == "spent_today"
+            else [None]
+        )
 
         # Every page is rebuilt from the same filters. Paginated with `fetch_all`
         # because PostgREST caps one response at 1,000 rows: without it the user
         # list, and the totals computed from it, would silently stop at 1,000.
         # Ordering by a unique column after the visible one keeps paging stable.
-        def _page(offset, limit):
+        # `spent_today` is chunked because an `in.(ids)` filter lives in the URL.
+        def _page(offset, limit, id_chunk=None):
             query = supabase.table("users").select(USER_LIST_COLUMNS)
             if status == "verified":
                 query = query.eq("email_verified", True)
@@ -1338,7 +1421,11 @@ def get_users():
             elif status == "inactive":
                 query = query.lt("last_login", month_ago)
             elif status == "today":
-                query = query.gte("last_login", day_ago)
+                query = query.gte("last_login", today_start)
+            elif status == "spent_today":
+                if not id_chunk:
+                    return []
+                query = query.in_("id", id_chunk)
 
             if created_from:
                 query = query.gte("created_at", created_from)
@@ -1356,7 +1443,14 @@ def get_users():
                 .data
             )
 
-        users = fetch_all(_page)
+        users = []
+        for id_chunk in id_chunks:
+            users.extend(fetch_all(lambda offset, limit, id_chunk=id_chunk: _page(offset, limit, id_chunk)))
+        if len(id_chunks) > 1:
+            users.sort(
+                key=lambda user: (user.get(sort_column) is None, str(user.get(sort_column) or "")),
+                reverse=sort_desc,
+            )
 
         # Apply search filter (client-side for flexibility)
         if search:
@@ -1435,16 +1529,16 @@ def get_user_detail(user_id):
 
         transactions = list(tx_result.data or [])
 
-        # Calculate stats
-        total_bought = sum(
-            t.get("amount", 0) for t in transactions if is_credit_in(t)
-        )
-        total_spent = sum(
-            abs(t.get("amount", 0))
-            for t in transactions
-            if is_credit_out(t)
-        )
-        total_revenue = _estimated_revenue(transactions)
+        # The table below is the last 50 rows. The totals match the user list,
+        # which sums the whole ledger — otherwise "Crediti spesi" on the detail
+        # page was only the recent slice.
+        ledger = bulk_user_totals(
+            supabase, [user_id], euro_value=plans.euro_value_of_credits
+        ).get(str(user_id), {})
+        total_bought = _safe_int(ledger.get("bought"), 0)
+        total_spent = _safe_int(ledger.get("spent"), 0)
+        total_revenue = float(ledger.get("euros") or 0)
+        transaction_count = _safe_int(ledger.get("count"), 0)
 
         # Get referred users
         referred = fetch_all(
@@ -1467,8 +1561,9 @@ def get_user_detail(user_id):
                     "total_bought": total_bought,
                     "total_spent": total_spent,
                     "total_revenue": round(total_revenue, 2),
-                    "transaction_count": len(transactions),
+                    "transaction_count": transaction_count,
                 },
+                "service_breakdown": _service_breakdown(supabase, user_id),
                 "referred_users": referred,
             }
         )

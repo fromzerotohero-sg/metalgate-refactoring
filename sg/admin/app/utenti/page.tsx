@@ -7,24 +7,35 @@ import DataTable, { type ColumnDef, type DataTableQuery, type SortOrder } from "
 import FilterBar, { type ActiveFilter } from "@/src/components/admin/filter-bar";
 import { VerifiedBadge } from "@/src/components/admin/badge";
 import { formatRelativeTime } from "@/src/components/admin/chat/time";
+import { useLiveTick } from "@/src/lib/use-live-tick";
 
 const QUICK_FILTERS: { value: string; label: string; dot: string | null }[] = [
   { value: "", label: "Tutti", dot: null },
-  { value: "today", label: "Attivi oggi", dot: "bg-green-500" },
-  { value: "inactive", label: "Inattivi", dot: "bg-slate-400" },
+  { value: "today", label: "Login oggi", dot: "bg-green-500" },
+  { value: "spent_today", label: "Hanno speso oggi", dot: "bg-amber-500" },
+  { value: "inactive", label: "Inattivi da 30gg", dot: "bg-slate-400" },
   { value: "unverified", label: "Non verificati", dot: "bg-red-500" }
 ];
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+function isUtcToday(date: Date): boolean {
+  const now = new Date();
+  return (
+    date.getUTCFullYear() === now.getUTCFullYear() &&
+    date.getUTCMonth() === now.getUTCMonth() &&
+    date.getUTCDate() === now.getUTCDate()
+  );
+}
 
 function LastSeenCell({ value }: { value?: string | null }) {
   if (!value) return <span className="text-muted">—</span>;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return <span className="text-muted">—</span>;
   const age = Date.now() - date.getTime();
-  const dotClass =
-    age < DAY_MS ? "bg-green-500 animate-pulse" : age < 7 * DAY_MS ? "bg-amber-500" : "bg-slate-300";
-  const dotLabel = age < DAY_MS ? "Attivo oggi" : age < 7 * DAY_MS ? "Attivo negli ultimi 7 giorni" : "Inattivo";
+  const today = isUtcToday(date);
+  const dotClass = today ? "bg-green-500 animate-pulse" : age < 7 * DAY_MS ? "bg-amber-500" : "bg-slate-300";
+  const dotLabel = today ? "Oggi (giornata UTC)" : age < 7 * DAY_MS ? "Negli ultimi 7 giorni" : "Oltre 7 giorni";
   return (
     <span className="inline-flex items-center gap-2 whitespace-nowrap" title={formatDate(value)}>
       <span className={`h-2 w-2 flex-none rounded-full ${dotClass}`} role="img" aria-label={dotLabel} />
@@ -105,6 +116,7 @@ function UsersPageInner() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tick = useLiveTick();
 
   const updateQuery = useCallback(
     (updates: Record<string, string>) => {
@@ -120,7 +132,7 @@ function UsersPageInner() {
   );
 
   useEffect(() => {
-    setLoading(true);
+    if (!data) setLoading(true);
     setError(null);
     adminApi
       .users({ page, per_page: perPage, search, status, sort, order, created_from: createdFrom, created_to: createdTo })
@@ -135,7 +147,7 @@ function UsersPageInner() {
       .then(setData)
       .catch((err) => setError(err.message ?? "Errore nel caricamento"))
       .finally(() => setLoading(false));
-  }, [page, perPage, search, status, sort, order, createdFrom, createdTo]);
+  }, [tick, page, perPage, search, status, sort, order, createdFrom, createdTo]);
 
   // Riepilogo "attivi oggi / totali" sopra la tabella: facoltativo, se /stats
   // fallisce la riga semplicemente non compare.
@@ -144,7 +156,7 @@ function UsersPageInner() {
       .stats()
       .then(setStats)
       .catch(() => setStats(null));
-  }, []);
+  }, [tick]);
 
   const onSearchChange = (value: string) => {
     setSearchInput(value);
@@ -173,10 +185,25 @@ function UsersPageInner() {
 
       {stats && (
         <p className="text-sm font-semibold text-muted">
-          <span className="text-green-600">{formatNumber(stats.active_today)} attivi oggi</span>
+          <span className="text-green-600">
+            {formatNumber(stats.logged_today ?? stats.active_today)} login oggi
+          </span>
+          {stats.users_spent_today != null && (
+            <>
+              {" · "}
+              <span className="text-amber-700">{formatNumber(stats.users_spent_today)} hanno speso oggi</span>
+            </>
+          )}
           {" · "}
           {formatNumber(stats.total_users)} totali
         </p>
+      )}
+
+      {status === "today" && (
+        <p className="admin-muted">Stesso criterio della card «Login oggi»: ultimo login dalla mezzanotte UTC, dal più recente.</p>
+      )}
+      {status === "spent_today" && (
+        <p className="admin-muted">Stesso criterio della card «Hanno speso crediti oggi»: utenti distinti con un addebito dalla mezzanotte UTC.</p>
       )}
 
       <div className="card p-3 sm:p-4">
@@ -210,7 +237,15 @@ function UsersPageInner() {
                   key={filter.value || "all"}
                   type="button"
                   aria-pressed={selected}
-                  onClick={() => updateQuery({ status: filter.value, page: "" })}
+                  onClick={() =>
+                    updateQuery({
+                      status: filter.value,
+                      page: "",
+                      ...(filter.value === "today" || filter.value === "spent_today"
+                        ? { sort: "last_login", order: "desc" }
+                        : {})
+                    })
+                  }
                   className={`inline-flex h-10 items-center gap-2 rounded-full border px-4 text-sm font-medium transition-colors ${
                     selected
                       ? "border-brand bg-brand text-white shadow-sm"

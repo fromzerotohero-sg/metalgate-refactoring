@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   AdminApiError,
@@ -13,6 +13,7 @@ import DataTable, { type ColumnDef, type DataTableQuery, type SortOrder } from "
 import FilterBar, { type ActiveFilter } from "@/src/components/admin/filter-bar";
 import Badge, { type BadgeTone } from "@/src/components/admin/badge";
 import { TRANSACTION_TYPE_LABELS, typeLabel } from "@/src/lib/labels";
+import { useLiveTick } from "@/src/lib/use-live-tick";
 
 // Il backend non espone un conteggio totale né un offset: l'endpoint accetta
 // solo `limit` (max 500). Si caricano fino a page*perPage righe già ordinate e
@@ -108,6 +109,8 @@ function TransazioniPageInner() {
   const [fetchLimit, setFetchLimit] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const loaded = useRef(false);
+  const tick = useLiveTick();
 
   const updateQuery = useCallback(
     (updates: Record<string, string>) => {
@@ -125,7 +128,7 @@ function TransazioniPageInner() {
   const limit = Math.min(MAX_FETCH, page * perPage);
 
   useEffect(() => {
-    setLoading(true);
+    if (!loaded.current) setLoading(true);
     setError(null);
     const base = { limit };
     adminApi
@@ -139,12 +142,13 @@ function TransazioniPageInner() {
         throw err;
       })
       .then((res) => {
+        loaded.current = true;
         setFetched(res.transactions);
         setFetchLimit(limit);
       })
       .catch((err) => setError(err.message ?? "Errore nel caricamento"))
       .finally(() => setLoading(false));
-  }, [limit, sort, order, type, status, dateFrom, dateTo]);
+  }, [tick, limit, sort, order, type, status, dateFrom, dateTo]);
 
   const rows = useMemo(() => fetched.slice((page - 1) * perPage, page * perPage), [fetched, page, perPage]);
 

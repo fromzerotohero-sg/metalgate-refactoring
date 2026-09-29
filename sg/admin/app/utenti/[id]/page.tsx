@@ -116,21 +116,26 @@ export default function UserDetailPage() {
 
   const transactions = useMemo(() => detail?.transactions ?? [], [detail]);
 
-  // Spese per servizio: solo crediti in uscita (amount < 0) con un servizio
-  // valorizzato. Se nessuna transazione ha `service`, la card non si mostra.
+  // Il backend somma tutto il registro. Se la risposta è di un API precedente,
+  // si ricostruisce dalle ultime 50 con la stessa regola (addebito anche se
+  // l'importo è positivo, servizio mancante = "non attribuito").
   const serviceBreakdown = useMemo(() => {
+    if (detail?.service_breakdown) return detail.service_breakdown;
     const byService = new Map<string, { credits: number; count: number }>();
     for (const tx of transactions) {
-      if (!tx.service || tx.amount >= 0) continue;
-      const entry = byService.get(tx.service) ?? { credits: 0, count: 0 };
+      const type = (tx.type ?? "").toLowerCase();
+      const creditOut = tx.amount < 0 || type === "deduction" || type === "usage";
+      if (!creditOut) continue;
+      const service = tx.service?.trim() || "non attribuito";
+      const entry = byService.get(service) ?? { credits: 0, count: 0 };
       entry.credits += Math.abs(tx.amount);
       entry.count += 1;
-      byService.set(tx.service, entry);
+      byService.set(service, entry);
     }
     return [...byService.entries()]
       .map(([service, data]) => ({ service, ...data }))
       .sort((a, b) => b.credits - a.credits);
-  }, [transactions]);
+  }, [detail, transactions]);
 
   if (error) return <p className="admin-error">{error}</p>;
   if (!detail) return <p className="admin-loading">Caricamento utente…</p>;
@@ -158,7 +163,11 @@ export default function UserDetailPage() {
         <StatCard label="Crediti disponibili" value={formatNumber(availableCredits(user))} />
         <StatCard label="Crediti comprati" value={formatNumber(stats.total_bought)} />
         <StatCard label="Crediti spesi" value={formatNumber(stats.total_spent)} />
-        <StatCard label="Revenue" value={formatEuro(stats.total_revenue)} hint={`${formatNumber(stats.transaction_count)} transazioni`} />
+        <StatCard
+          label="Revenue"
+          value={formatEuro(stats.total_revenue)}
+          hint={`${formatNumber(stats.transaction_count)} movimenti nel registro`}
+        />
       </div>
 
       <section className="admin-card">
@@ -250,7 +259,8 @@ export default function UserDetailPage() {
       )}
 
       <section className="admin-card">
-        <h2>Transazioni</h2>
+        <h2>Ultime 50 transazioni</h2>
+        <p className="admin-muted">I totali sopra contano tutto il registro, non solo queste righe.</p>
         <DataTable mode="client" columns={TX_COLUMNS} rows={transactions} perPage={10} emptyMessage="Nessuna transazione." />
       </section>
 
