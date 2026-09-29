@@ -326,6 +326,8 @@ export type EmailSendPayload = {
   footer_note?: string;
   cta_text?: string;
   cta_url?: string;
+  cta2_text?: string;
+  cta2_url?: string;
   banner_image?: string;
   logo_image?: string;
   test_email?: string;
@@ -342,6 +344,8 @@ export type EmailRenderPayload = {
   footer_note?: string;
   cta_text?: string;
   cta_url?: string;
+  cta2_text?: string;
+  cta2_url?: string;
 };
 
 export type EmailRenderResponse = { html: string };

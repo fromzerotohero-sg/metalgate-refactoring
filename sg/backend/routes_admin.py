@@ -835,6 +835,8 @@ def render_email_campaign():
             or "Il team di From Zero To Hero",
             "cta_text": str(data.get("cta_text") or "").strip(),
             "cta_url": str(data.get("cta_url") or "").strip(),
+            "cta2_text": str(data.get("cta2_text") or "").strip(),
+            "cta2_url": str(data.get("cta2_url") or "").strip(),
             "banner_image": str(data.get("banner_image") or "").strip(),
             "logo_image": str(data.get("logo_image") or "").strip(),
         }
@@ -873,6 +875,8 @@ def send_email_campaign():
         footer_note = str(data.get("footer_note") or "").strip()
         cta_text = str(data.get("cta_text") or "").strip()
         cta_url = str(data.get("cta_url") or "").strip()
+        cta2_text = str(data.get("cta2_text") or "").strip()
+        cta2_url = str(data.get("cta2_url") or "").strip()
         banner_image = str(data.get("banner_image") or "").strip()
         logo_image = str(data.get("logo_image") or "").strip()
         test_email = str(data.get("test_email") or "").strip().lower()
@@ -889,6 +893,8 @@ def send_email_campaign():
             "footer_note": footer_note or "Il team di From Zero To Hero",
             "cta_text": cta_text,
             "cta_url": cta_url,
+            "cta2_text": cta2_text,
+            "cta2_url": cta2_url,
             "banner_image": banner_image,
             "logo_image": logo_image,
         }

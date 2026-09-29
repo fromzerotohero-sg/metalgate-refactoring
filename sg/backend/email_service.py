@@ -548,6 +548,7 @@ def sanitize_image_src(value) -> str:
 # The operator drops this line in the message and moves it. The sent mail
 # replaces it with the button; it is never shown to the recipient.
 CTA_MARKER = "[[pulsante]]"
+CTA_MARKER_2 = "[[pulsante2]]"
 _BODY_P_STYLE = "margin: 0 0 20px 0; font-size: 16px; line-height: 1.8; color: #d7d0ea;"
 
 
@@ -559,59 +560,120 @@ def _campaign_paragraph(text: str) -> str:
     return f'<p style="{_BODY_P_STYLE}">{escaped}</p>'
 
 
+def _campaign_button(label: str, url: str, bgcolor: str) -> tuple[str, str]:
+    """A Gmail-safe button, or empty strings when label or URL is missing."""
+    raw_label = str(label or "").strip()
+    safe_label = html.escape(raw_label)
+    safe_target = sanitize_cta_url(url)
+    if not safe_label or not safe_target:
+        return "", ""
+    href = html.escape(safe_target, quote=True)
+    # Solid background-color: Gmail drops gradients, and a dark label on the
+    # dark page disappears with them.
+    button = f"""
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin: 28px auto;">
+              <tr>
+                <td align="center" bgcolor="{bgcolor}" style="background-color: {bgcolor}; border-radius: 8px;">
+                  <a href="{href}" target="_blank" style="display: inline-block; background-color: {bgcolor}; color: #080611; font-size: 16px; font-weight: 800; text-decoration: none; padding: 14px 36px; border-radius: 8px; letter-spacing: 0.5px;">{safe_label}</a>
+                </td>
+              </tr>
+            </table>
+        """
+    return button, f"{raw_label}: {safe_target}"
+
+
+def _next_cta_marker(text: str) -> tuple[int, str] | None:
+    """The earliest marker. ``[[pulsante2]]`` is checked first: it starts with the other."""
+    hits = []
+    for marker in (CTA_MARKER_2, CTA_MARKER):
+        index = text.find(marker)
+        if index >= 0:
+            hits.append((index, marker))
+    if not hits:
+        return None
+    hits.sort(key=lambda item: (item[0], -len(item[1])))
+    return hits[0]
+
+
+def _body_with_buttons(raw_body: str, buttons: dict[str, tuple[str, str]]) -> tuple[str, str, str, str]:
+    """
+    Split the message on the two markers.
+
+    A marker with a button is replaced in place. A marker without one is
+    dropped. A button with no marker is appended after the text.
+    """
+    html_parts: list[str] = []
+    plain_parts: list[str] = []
+    used: set[str] = set()
+    rest = raw_body
+    while rest:
+        hit = _next_cta_marker(rest)
+        if hit is None:
+            html_parts.append(_campaign_paragraph(rest))
+            if rest.strip():
+                plain_parts.append(rest.strip())
+            break
+        index, marker = hit
+        before = rest[:index]
+        html_parts.append(_campaign_paragraph(before))
+        if before.strip():
+            plain_parts.append(before.strip())
+        button_html, button_plain = buttons.get(marker, ("", ""))
+        if button_html and marker not in used:
+            html_parts.append(button_html)
+            plain_parts.append(button_plain)
+            used.add(marker)
+        rest = rest[index + len(marker) :]
+
+    trailing_html: list[str] = []
+    trailing_plain: list[str] = []
+    for marker in (CTA_MARKER, CTA_MARKER_2):
+        if marker in used:
+            continue
+        button_html, button_plain = buttons.get(marker, ("", ""))
+        if not button_html:
+            continue
+        trailing_html.append(button_html)
+        trailing_plain.append(button_plain)
+
+    body_html = "".join(html_parts) or f'<p style="{_BODY_P_STYLE}"></p>'
+    plain_body = "\n\n".join(plain_parts).strip()
+    trailing_cta = "".join(trailing_html)
+    trailing_text = "".join(f"\n\n{line}" for line in trailing_plain)
+    return body_html, plain_body, trailing_cta, trailing_text
+
+
 def build_campaign_bodies(payload: dict, username: str | None) -> tuple:
     """Render one campaign email for one recipient: ``(html, text)``."""
     heading = html.escape(str(payload.get("heading", "")).strip())
     intro = html.escape(str(payload.get("intro_text", "")).strip()).replace("\n", "<br>")
-    cta_text = html.escape(str(payload.get("cta_text", "")).strip())
-    cta_url = str(payload.get("cta_url", "")).strip()
     banner_image = sanitize_image_src(payload.get("banner_image"))
     logo_image = sanitize_image_src(payload.get("logo_image")) or DEFAULT_CAMPAIGN_LOGO
     footer_note = html.escape(str(payload.get("footer_note", "")).strip()).replace(
         "\n", "<br>"
     )
-    safe_username = html.escape(username or "utente")
-
-    cta_html = ""
-    cta_text_line = ""
-    safe_cta_url = sanitize_cta_url(cta_url)
-    if cta_text and safe_cta_url:
-        safe_url = html.escape(safe_cta_url, quote=True)
-        # Solid background-color first. Gmail drops linear-gradient, and without
-        # a fallback the label (#080611) sits on the dark page and the button
-        # vanishes. The table cell is what Outlook and Gmail actually click.
-        cta_html = f"""
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin: 36px auto 32px auto;">
-              <tr>
-                <td align="center" bgcolor="#BD9FED" style="background-color: #BD9FED; border-radius: 8px;">
-                  <a href="{safe_url}" target="_blank" style="display: inline-block; background-color: #BD9FED; color: #080611; font-size: 16px; font-weight: 800; text-decoration: none; padding: 14px 36px; border-radius: 8px; letter-spacing: 0.5px;">{cta_text}</a>
-                </td>
-              </tr>
-            </table>
-        """
-        cta_text_line = f"\n\n{cta_text}: {safe_cta_url}"
-
-    raw_body = str(payload.get("body_text", "")).strip()
-    placed = CTA_MARKER in raw_body
-    if placed:
-        before, _, rest = raw_body.partition(CTA_MARKER)
-        after = rest.replace(CTA_MARKER, "")
+    display_name = (username or "").strip()
+    safe_username = html.escape(display_name)
+    if safe_username:
+        greeting_html = f'Ciao <strong style="color: #ffffff;">{safe_username}</strong>,'
+        greeting_text = f"Ciao {display_name},"
     else:
-        before, after = raw_body, ""
+        greeting_html = "Ciao,"
+        greeting_text = "Ciao,"
 
-    # The marker is the operator's choice. Without it the button stays at the
-    # bottom, as before. A marker with no button is removed, never mailed.
-    if placed and cta_html:
-        body_block = _campaign_paragraph(before) + cta_html + _campaign_paragraph(after)
-        trailing_cta = ""
-        plain_body = f"{before.strip()}\n\n{cta_text}: {safe_cta_url}\n\n{after.strip()}".strip()
-        trailing_cta_text = ""
-    else:
-        visible = raw_body.replace(CTA_MARKER, "") if placed else raw_body
-        body_block = f'<p style="{_BODY_P_STYLE}">{html.escape(visible).replace(chr(10), "<br>")}</p>'
-        trailing_cta = cta_html
-        plain_body = visible.strip()
-        trailing_cta_text = cta_text_line
+    first_html, first_plain = _campaign_button(
+        str(payload.get("cta_text", "")), str(payload.get("cta_url", "")), "#BD9FED"
+    )
+    second_html, second_plain = _campaign_button(
+        str(payload.get("cta2_text", "")), str(payload.get("cta2_url", "")), "#60B0CA"
+    )
+    body_block, plain_body, trailing_cta, trailing_cta_text = _body_with_buttons(
+        str(payload.get("body_text", "")).strip(),
+        {
+            CTA_MARKER: (first_html, first_plain),
+            CTA_MARKER_2: (second_html, second_plain),
+        },
+    )
 
     logo_block = ""
     if logo_image:
@@ -696,7 +758,7 @@ def build_campaign_bodies(payload: dict, username: str | None) -> tuple:
                       font-size: 16px;
                       line-height: 1.75;
                       color: #cfc7e6;
-                    ">Ciao <strong style="color: #ffffff;">{safe_username}</strong>,</p>
+                    ">{greeting_html}</p>
                     <p style="
                       margin: 0 0 20px 0;
                       font-size: 16px;
@@ -734,7 +796,7 @@ def build_campaign_bodies(payload: dict, username: str | None) -> tuple:
 
     text_body = (
         f"{heading}\n\n"
-        f"Ciao {username or 'utente'},\n\n"
+        f"{greeting_text}\n\n"
         f"{str(payload.get('intro_text', '')).strip()}\n\n"
         f"{plain_body}\n\n"
         f"{str(payload.get('footer_note', '')).strip()}\n\n"

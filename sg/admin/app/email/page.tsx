@@ -22,6 +22,7 @@ import { useToast } from "@/src/components/admin/toast";
 const PREVIEW_DEBOUNCE_MS = 500;
 const RENDER_DEBOUNCE_MS = 800;
 const CTA_MARKER = "[[pulsante]]";
+const CTA_MARKER_2 = "[[pulsante2]]";
 
 type Preset = { id: string; label: string; description: string; filters: CampaignFilters };
 
@@ -196,29 +197,42 @@ function EmailPageInner() {
   const [ctaEnabled, setCtaEnabled] = useState(false);
   const [ctaText, setCtaText] = useState("");
   const [ctaUrl, setCtaUrl] = useState("");
+  const [cta2Enabled, setCta2Enabled] = useState(false);
+  const [cta2Text, setCta2Text] = useState("");
+  const [cta2Url, setCta2Url] = useState("");
   const bodyRef = useRef<HTMLTextAreaElement | null>(null);
 
   const hasCta = ctaEnabled && Boolean(ctaText.trim()) && Boolean(ctaUrl.trim());
-  const ctaPlaced = bodyText.includes(CTA_MARKER);
+  const hasCta2 = cta2Enabled && Boolean(cta2Text.trim()) && Boolean(cta2Url.trim());
+  const ctaPlaced = /\[\[pulsante\]\](?!2)/.test(bodyText);
+  const cta2Placed = bodyText.includes(CTA_MARKER_2);
   const hasContent = Boolean(subject.trim() || bodyText.trim());
 
-  const placeCtaInText = () => {
+  const stripMarker = (value: string, marker: string) => {
+    if (marker === CTA_MARKER_2) return value.split(CTA_MARKER_2).join("");
+    return value.replace(/\[\[pulsante\]\](?!2)/g, "");
+  };
+
+  const placeCtaInText = (marker: string) => {
     const el = bodyRef.current;
     let cursor = el?.selectionStart ?? bodyText.length;
     let text = bodyText;
-    const markerAt = text.indexOf(CTA_MARKER);
+    const markerAt =
+      marker === CTA_MARKER_2
+        ? text.indexOf(CTA_MARKER_2)
+        : text.search(/\[\[pulsante\]\](?!2)/);
     if (markerAt >= 0) {
-      text = text.slice(0, markerAt) + text.slice(markerAt + CTA_MARKER.length);
-      if (cursor > markerAt) cursor -= CTA_MARKER.length;
+      text = text.slice(0, markerAt) + text.slice(markerAt + marker.length);
+      if (cursor > markerAt) cursor -= marker.length;
     }
     cursor = Math.max(0, Math.min(cursor, text.length));
     const head = text.slice(0, cursor).replace(/\s+$/, "");
     const tail = text.slice(cursor).replace(/^\s+/, "");
     const beforeGap = head ? "\n\n" : "";
     const afterGap = tail ? "\n\n" : "";
-    const next = `${head}${beforeGap}${CTA_MARKER}${afterGap}${tail}`;
+    const next = `${head}${beforeGap}${marker}${afterGap}${tail}`;
     setBodyText(next);
-    const caret = head.length + beforeGap.length + CTA_MARKER.length;
+    const caret = head.length + beforeGap.length + marker.length;
     requestAnimationFrame(() => {
       el?.focus();
       el?.setSelectionRange(caret, caret);
@@ -229,13 +243,14 @@ function EmailPageInner() {
     setCtaEnabled(false);
     setCtaText("");
     setCtaUrl("");
-    setBodyText((current) =>
-      current
-        .split(CTA_MARKER)
-        .join("")
-        .replace(/\n{3,}/g, "\n\n")
-        .trim()
-    );
+    setBodyText((current) => stripMarker(current, CTA_MARKER).replace(/\n{3,}/g, "\n\n").trim());
+  };
+
+  const clearCta2 = () => {
+    setCta2Enabled(false);
+    setCta2Text("");
+    setCta2Url("");
+    setBodyText((current) => stripMarker(current, CTA_MARKER_2).replace(/\n{3,}/g, "\n\n").trim());
   };
 
   // ── Anteprima live ───────────────────────────────────────────────
@@ -288,7 +303,8 @@ function EmailPageInner() {
         .emailRender({
           subject: subject.trim() || "(Senza oggetto)",
           body_text: bodyText.trim(),
-          ...(hasCta ? { cta_text: ctaText.trim(), cta_url: ctaUrl.trim() } : {})
+          ...(hasCta ? { cta_text: ctaText.trim(), cta_url: ctaUrl.trim() } : {}),
+          ...(hasCta2 ? { cta2_text: cta2Text.trim(), cta2_url: cta2Url.trim() } : {})
         })
         .then((res) => {
           setRenderHtml(res.html);
@@ -308,7 +324,7 @@ function EmailPageInner() {
     return () => {
       if (renderDebounce.current) clearTimeout(renderDebounce.current);
     };
-  }, [subject, bodyText, hasCta, ctaText, ctaUrl, renderUnavailable, hasContent]);
+  }, [subject, bodyText, hasCta, ctaText, ctaUrl, hasCta2, cta2Text, cta2Url, renderUnavailable, hasContent]);
 
   const recipientsCount = singleMode ? 1 : (preview?.recipients_count ?? null);
   const canSend = Boolean(subject.trim()) && Boolean(bodyText.trim()) && !sending && (singleMode || (recipientsCount ?? 0) > 0);
@@ -320,10 +336,11 @@ function EmailPageInner() {
       subject: subject.trim(),
       body_text: bodyText.trim(),
       ...(hasCta ? { cta_text: ctaText.trim(), cta_url: ctaUrl.trim() } : {}),
+      ...(hasCta2 ? { cta2_text: cta2Text.trim(), cta2_url: cta2Url.trim() } : {}),
       ...(singleMode ? { recipient_emails: [singleTo] } : { filters }),
       ...extra
     }),
-    [subject, bodyText, hasCta, ctaText, ctaUrl, singleMode, singleTo, filters]
+    [subject, bodyText, hasCta, ctaText, ctaUrl, hasCta2, cta2Text, cta2Url, singleMode, singleTo, filters]
   );
 
   const sendTest = async () => {
@@ -622,14 +639,14 @@ function EmailPageInner() {
               >
                 <span>
                   <span className="block text-sm font-semibold text-ink">Aggiungi un pulsante (CTA)</span>
-                  <span className="mt-0.5 block text-xs text-muted">Opzionale: un bottone che metti tu nel punto del testo che vuoi.</span>
+                  <span className="mt-0.5 block text-xs text-muted">Opzionale: fino a due bottoni, ognuno nel punto del testo che scegli.</span>
                 </span>
                 <span className="flex-none text-sm font-semibold text-brand">Aggiungi</span>
               </button>
             ) : (
               <div className="rounded-xl border border-line bg-surface p-4">
                 <div className="mb-4 flex items-center justify-between gap-3">
-                  <p className="text-sm font-semibold text-ink">Pulsante (CTA)</p>
+                  <p className="text-sm font-semibold text-ink">Primo pulsante</p>
                   <button
                     type="button"
                     className="flex-none text-sm font-semibold text-muted underline hover:text-ink"
@@ -657,19 +674,78 @@ function EmailPageInner() {
                     {!hasCta
                       ? "Servono sia il testo sia il link."
                       : ctaPlaced
-                        ? "Il pulsante è nel messaggio. Taglia la riga [[pulsante]] e incollala dove la vuoi."
-                        : "Senza un punto scelto, il pulsante resta in fondo."}
+                        ? "È nel messaggio. Taglia la riga [[pulsante]] e incollala dove la vuoi."
+                        : "Senza un punto scelto, resta in fondo."}
                   </p>
                   <button
                     type="button"
                     className="flex-none text-sm font-semibold text-brand hover:underline"
-                    onClick={placeCtaInText}
+                    onClick={() => placeCtaInText(CTA_MARKER)}
                   >
                     {ctaPlaced ? "Sposta il pulsante qui" : "Metti il pulsante nel testo"}
                   </button>
                 </div>
               </div>
             )}
+
+            {ctaEnabled && !cta2Enabled ? (
+              <button
+                type="button"
+                onClick={() => setCta2Enabled(true)}
+                className="flex w-full items-center justify-between gap-4 rounded-xl border border-dashed border-line bg-surface/50 px-4 py-3.5 text-left transition-colors hover:border-brand/50"
+              >
+                <span>
+                  <span className="block text-sm font-semibold text-ink">Aggiungi un secondo pulsante</span>
+                  <span className="mt-0.5 block text-xs text-muted">Un altro link, in un altro punto del testo.</span>
+                </span>
+                <span className="flex-none text-sm font-semibold text-brand">Aggiungi</span>
+              </button>
+            ) : null}
+
+            {cta2Enabled ? (
+              <div className="rounded-xl border border-line bg-surface p-4">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-ink">Secondo pulsante</p>
+                  <button
+                    type="button"
+                    className="flex-none text-sm font-semibold text-muted underline hover:text-ink"
+                    onClick={clearCta2}
+                  >
+                    Rimuovi
+                  </button>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="field">
+                    <span className="field-label">Testo del pulsante</span>
+                    <span className="field-input">
+                      <input type="text" value={cta2Text} onChange={(e) => setCta2Text(e.target.value)} placeholder="Es. Guarda il video" />
+                    </span>
+                  </label>
+                  <label className="field">
+                    <span className="field-label">Link del pulsante</span>
+                    <span className="field-input">
+                      <input type="url" value={cta2Url} onChange={(e) => setCta2Url(e.target.value)} placeholder="https://…" />
+                    </span>
+                  </label>
+                </div>
+                <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-xs text-muted">
+                    {!hasCta2
+                      ? "Servono sia il testo sia il link."
+                      : cta2Placed
+                        ? "È nel messaggio. Taglia la riga [[pulsante2]] e incollala dove la vuoi."
+                        : "Senza un punto scelto, resta in fondo, sotto il primo."}
+                  </p>
+                  <button
+                    type="button"
+                    className="flex-none text-sm font-semibold text-brand hover:underline"
+                    onClick={() => placeCtaInText(CTA_MARKER_2)}
+                  >
+                    {cta2Placed ? "Sposta il pulsante qui" : "Metti il pulsante nel testo"}
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </div>
         </SectionCard>
 
