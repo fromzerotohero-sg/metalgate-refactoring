@@ -48,6 +48,22 @@ export const PLATFORM_COLORS: Record<string, string> = {
 
 export const PLATFORM_COLOR_FALLBACK = "#64748b";
 
+export const FEATURE_LABELS: Record<string, string> = {
+  "connection-radar": "Connection Radar",
+  "assistant-chat": "Chat IA",
+  "card-advisor-deep-analysis": "Card Advisor",
+  "extract-match-data": "Estrazione partita",
+  "extract-formation": "Estrazione formazione",
+  "extract-player": "Estrazione giocatore",
+  "extract-game-analysis": "Estrazione analisi",
+  "generate-countermeasures": "Contromisure"
+};
+
+export function descriptionLabel(description?: string | null): string {
+  if (!description) return "—";
+  return FEATURE_LABELS[description] ?? description;
+}
+
 export function serviceLabel(service?: string | null): string {
   if (!service) return "—";
   return SERVICE_LABELS[service] ?? service;

@@ -78,6 +78,10 @@ export type AdminStats = {
   mrr?: number;
   revenue_30d?: number;
   credits_spent_30d?: number;
+  connection_radar?: {
+    today: { tests: number; users: number; hp: number };
+    last_30d: { tests: number; users: number; hp: number };
+  };
   open_conversations?: number;
   unread_messages?: number;
   paying_users?: number;
@@ -275,6 +279,7 @@ export type TransactionsQuery = {
   type?: string;
   status?: string;
   user_id?: string;
+  description?: string;
   from?: string;
   to?: string;
 };
@@ -423,6 +428,7 @@ export const adminApi = {
     if (query.type) params.set("type", query.type);
     if (query.status) params.set("status", query.status);
     if (query.user_id) params.set("user_id", query.user_id);
+    if (query.description) params.set("description", query.description);
     if (query.from) params.set("from", query.from);
     if (query.to) params.set("to", query.to);
     const qs = params.toString();

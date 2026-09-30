@@ -162,6 +162,16 @@ export default function PanoramicaPage() {
           hint={stats.credits_spent_30d != null ? `Spesi negli ultimi 30gg: ${formatNumber(stats.credits_spent_30d)}` : undefined}
         />
         <StatCard
+          label="Connection Radar oggi"
+          value={stats.connection_radar ? formatNumber(stats.connection_radar.today.tests) : "—"}
+          hint={
+            stats.connection_radar
+              ? `${formatNumber(stats.connection_radar.today.users)} persone · ${formatNumber(stats.connection_radar.today.hp)} HP · 30gg: ${formatNumber(stats.connection_radar.last_30d.tests)} test`
+              : "Test pagati, 3 HP ciascuno"
+          }
+          href="/transazioni?description=connection-radar"
+        />
+        <StatCard
           label="Chat aperte"
           value={stats.open_conversations != null ? formatNumber(stats.open_conversations) : "—"}
           hint={stats.unread_messages != null ? `${formatNumber(stats.unread_messages)} messaggi non letti` : undefined}

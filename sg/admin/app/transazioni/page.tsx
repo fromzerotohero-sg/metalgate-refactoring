@@ -12,7 +12,7 @@ import {
 import DataTable, { type ColumnDef, type DataTableQuery, type SortOrder } from "@/src/components/admin/data-table";
 import FilterBar, { type ActiveFilter } from "@/src/components/admin/filter-bar";
 import Badge, { type BadgeTone } from "@/src/components/admin/badge";
-import { TRANSACTION_TYPE_LABELS, typeLabel } from "@/src/lib/labels";
+import { TRANSACTION_TYPE_LABELS, descriptionLabel, typeLabel } from "@/src/lib/labels";
 import { useLiveTick } from "@/src/lib/use-live-tick";
 
 // Il backend non espone un conteggio totale né un offset: l'endpoint accetta
@@ -68,7 +68,7 @@ const COLUMNS: ColumnDef<AdminTransaction, unknown>[] = [
     accessorKey: "description",
     header: "Descrizione",
     enableSorting: false,
-    cell: ({ row }) => row.original.description || "—"
+    cell: ({ row }) => descriptionLabel(row.original.description)
   },
   {
     id: "amount",
@@ -98,6 +98,7 @@ function TransazioniPageInner() {
   const perPage = Math.max(1, parseInt(searchParams.get("per_page") ?? "20", 10) || 20);
   const type = searchParams.get("type") ?? "";
   const status = searchParams.get("status") ?? "";
+  const description = searchParams.get("description") ?? "";
   const dateFrom = searchParams.get("from") ?? "";
   const dateTo = searchParams.get("to") ?? "";
   const sort = searchParams.get("sort") ?? undefined;
@@ -132,11 +133,11 @@ function TransazioniPageInner() {
     setError(null);
     const base = { limit };
     adminApi
-      .transactions({ ...base, sort, order, type, status, from: dateFrom, to: dateTo })
+      .transactions({ ...base, sort, order, type, status, description, from: dateFrom, to: dateTo })
       // Se il backend non riconosce ancora ordinamento/filtri (400), riprova
       // con la query base: l'ordinamento di default resta valido.
       .catch((err) => {
-        if (err instanceof AdminApiError && err.status === 400 && (sort || type || status || dateFrom || dateTo)) {
+        if (err instanceof AdminApiError && err.status === 400 && (sort || type || status || description || dateFrom || dateTo)) {
           return adminApi.transactions(base);
         }
         throw err;
@@ -148,7 +149,7 @@ function TransazioniPageInner() {
       })
       .catch((err) => setError(err.message ?? "Errore nel caricamento"))
       .finally(() => setLoading(false));
-  }, [tick, limit, sort, order, type, status, dateFrom, dateTo]);
+  }, [tick, limit, sort, order, type, status, description, dateFrom, dateTo]);
 
   const rows = useMemo(() => fetched.slice((page - 1) * perPage, page * perPage), [fetched, page, perPage]);
 
@@ -171,12 +172,19 @@ function TransazioniPageInner() {
     const filters: ActiveFilter[] = [];
     if (type) filters.push({ id: "type", label: `Tipo: ${typeLabel}`, onClear: () => updateQuery({ type: "", page: "" }) });
     if (status) filters.push({ id: "status", label: `Stato: ${statusLabel}`, onClear: () => updateQuery({ status: "", page: "" }) });
+    if (description) {
+      filters.push({
+        id: "description",
+        label: descriptionLabel(description),
+        onClear: () => updateQuery({ description: "", page: "" })
+      });
+    }
     if (dateFrom) filters.push({ id: "from", label: `Dal: ${dateFrom}`, onClear: () => updateQuery({ from: "", page: "" }) });
     if (dateTo) filters.push({ id: "to", label: `Al: ${dateTo}`, onClear: () => updateQuery({ to: "", page: "" }) });
     return filters;
-  }, [type, typeLabel, status, statusLabel, dateFrom, dateTo, updateQuery]);
+  }, [type, typeLabel, status, statusLabel, description, dateFrom, dateTo, updateQuery]);
 
-  const clearAll = () => updateQuery({ type: "", status: "", from: "", to: "", page: "" });
+  const clearAll = () => updateQuery({ type: "", status: "", description: "", from: "", to: "", page: "" });
 
   return (
     <div className="admin-page">

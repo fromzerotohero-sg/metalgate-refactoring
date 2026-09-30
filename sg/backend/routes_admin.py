@@ -16,6 +16,7 @@ import hmac
 import ipaddress
 import logging
 import os
+import re
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -1223,7 +1224,7 @@ def get_stats():
         tx_data = fetch_all(
             lambda offset, limit: (
                 supabase.table("transactions")
-                .select("amount, type, timestamp, user_id")
+                .select("amount, type, timestamp, user_id, description")
                 .order("id")
                 .range(offset, offset + limit - 1)
                 .execute()
@@ -1258,6 +1259,29 @@ def get_stats():
                 and str(t.get("timestamp") or "") >= today_start
             }
         )
+
+        # Connection Radar writes this description on each 3 HP test. Counted
+        # from the same ledger read, so the dashboard moves when a test is paid.
+        def _radar_slice(rows):
+            return {
+                "tests": len(rows),
+                "users": len({row.get("user_id") for row in rows if row.get("user_id")}),
+                "hp": sum(abs(_safe_int(row.get("amount"), 0)) for row in rows),
+            }
+
+        radar_rows = [
+            t
+            for t in tx_data
+            if is_credit_out(t) and str(t.get("description") or "") == "connection-radar"
+        ]
+        connection_radar = {
+            "today": _radar_slice(
+                [t for t in radar_rows if str(t.get("timestamp") or "") >= today_start]
+            ),
+            "last_30d": _radar_slice(
+                [t for t in radar_rows if str(t.get("timestamp") or "") >= month_ago]
+            ),
+        }
 
         # Users who ever paid.
         paying_result = (
@@ -1364,6 +1388,7 @@ def get_stats():
                 "revenue_30d": round(revenue_30d, 2),
                 "credits_spent_30d": credits_spent_30d,
                 "users_spent_today": users_spent_today,
+                "connection_radar": connection_radar,
                 "open_conversations": open_conversations,
                 "unread_messages": unread_messages,
                 "paying_users": paying_users,
@@ -1675,6 +1700,9 @@ def get_recent_transactions():
 
         tx_type = (request.args.get("type") or "").strip()
         tx_status = (request.args.get("status") or "").strip()
+        description = (request.args.get("description") or "").strip()
+        if description and not re.fullmatch(r"[a-z0-9-]{1,64}", description):
+            return jsonify({"error": "Invalid description filter"}), 400
         user_id = (request.args.get("user_id") or "").strip()
         try:
             date_from = _date_bound(request.args.get("from"), end_of_day=False)
@@ -1687,6 +1715,8 @@ def get_recent_transactions():
             query = query.eq("type", tx_type)
         if tx_status:
             query = query.eq("status", tx_status)
+        if description:
+            query = query.eq("description", description)
         if user_id:
             query = query.eq("user_id", user_id)
         if date_from:

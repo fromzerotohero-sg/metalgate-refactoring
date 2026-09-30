@@ -17,7 +17,7 @@ import GrantCreditsForm from "@/src/components/admin/GrantCreditsForm";
 import DataTable, { type ColumnDef } from "@/src/components/admin/data-table";
 import Badge, { VerifiedBadge, type BadgeTone } from "@/src/components/admin/badge";
 import { formatRelativeTime } from "@/src/components/admin/chat/time";
-import { eventLabel, platformColor, platformLabel, serviceLabel, typeLabel } from "@/src/lib/labels";
+import { descriptionLabel, eventLabel, platformColor, platformLabel, serviceLabel, typeLabel } from "@/src/lib/labels";
 import type { AdminTransaction } from "@/src/lib/admin-api";
 
 const TX_STATUS_TONES: Record<string, BadgeTone> = {
@@ -49,7 +49,7 @@ const TX_COLUMNS: ColumnDef<AdminTransaction, unknown>[] = [
     enableSorting: false,
     cell: ({ row }) => (
       <>
-        {row.original.description || "—"}
+        {descriptionLabel(row.original.description)}
         {row.original.service && <span className="admin-muted"> · {serviceLabel(row.original.service)}</span>}
       </>
     )
