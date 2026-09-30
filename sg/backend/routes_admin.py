@@ -533,6 +533,7 @@ def _normalize_campaign_filters(filters):
         "inactive_days_over": _safe_int(filters.get("inactive_days_over"), 0),
         "referral_type": str(filters.get("referral_type", "all")).strip().lower(),
         "tag_contains": str(filters.get("tag_contains", "")).strip().lower(),
+        "streamer_id": str(filters.get("streamer_id", "")).strip()[:64],
     }
 
 
@@ -603,6 +604,12 @@ def _filter_users_for_campaign(users, normalized_filters):
         if referral_type == "streamer" and not referred_by_streamer:
             continue
         if referral_type == "none" and (referred_by or referred_by_streamer):
+            continue
+
+        # Direct signups on this streamer's code only. A manager's downline
+        # stays out: those users are attributed to the streamer they used.
+        wanted_streamer = normalized_filters["streamer_id"]
+        if wanted_streamer and str(referred_by_streamer or "") != wanted_streamer:
             continue
 
         tag_contains = normalized_filters["tag_contains"]

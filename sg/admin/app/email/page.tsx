@@ -13,7 +13,8 @@ import {
   type EmailPreviewResponse,
   type EmailSendPayload,
   type EmailSendResponse,
-  type EmailCampaignHistoryItem
+  type EmailCampaignHistoryItem,
+  type StreamerListItem
 } from "@/src/lib/admin-api";
 import DataTable, { type ColumnDef, type DataTableQuery } from "@/src/components/admin/data-table";
 import Badge, { VerifiedBadge, type BadgeTone } from "@/src/components/admin/badge";
@@ -171,6 +172,8 @@ function EmailPageInner() {
   const [advMinCredits, setAdvMinCredits] = useState("");
   const [advCreatedWithin, setAdvCreatedWithin] = useState("");
   const [advTagContains, setAdvTagContains] = useState("");
+  const [streamerId, setStreamerId] = useState("");
+  const [streamerOptions, setStreamerOptions] = useState<StreamerListItem[]>([]);
 
   const filters = useMemo<CampaignFilters>(() => {
     const preset = PRESETS.find((p) => p.id === presetId) ?? PRESETS[0];
@@ -181,8 +184,9 @@ function EmailPageInner() {
     const createdWithin = parseInt(advCreatedWithin, 10);
     if (!Number.isNaN(createdWithin) && createdWithin > 0) merged.created_within_days = createdWithin;
     if (advTagContains.trim()) merged.tag_contains = advTagContains.trim();
+    if (streamerId) merged.streamer_id = streamerId;
     return merged;
-  }, [presetId, advSearch, advMinCredits, advCreatedWithin, advTagContains]);
+  }, [presetId, advSearch, advMinCredits, advCreatedWithin, advTagContains, streamerId]);
   const filtersKey = JSON.stringify(filters);
 
   const [preview, setPreview] = useState<EmailPreviewResponse | null>(null);
@@ -268,6 +272,18 @@ function EmailPageInner() {
   const [sending, setSending] = useState(false);
   const [lastResult, setLastResult] = useState<EmailSendResponse | null>(null);
   const [historyReload, setHistoryReload] = useState(0);
+
+  useEffect(() => {
+    adminApi
+      .streamers()
+      .then((res) => {
+        const rows = [...res.streamers].sort((a, b) =>
+          (a.id_code || "").localeCompare(b.id_code || "", "it")
+        );
+        setStreamerOptions(rows);
+      })
+      .catch(() => setStreamerOptions([]));
+  }, []);
 
   useEffect(() => {
     if (singleMode) return;
@@ -534,6 +550,21 @@ function EmailPageInner() {
               );
             })}
           </div>
+
+          <label className="field mt-4">
+            <span className="field-label">Solo gli iscritti di uno streamer</span>
+            <select className="admin-select w-full" value={streamerId} onChange={(e) => setStreamerId(e.target.value)}>
+              <option value="">Tutti, da qualunque streamer</option>
+              {streamerOptions.map((streamer) => (
+                <option key={String(streamer.streamer_id)} value={String(streamer.streamer_id)}>
+                  {streamer.id_code || `Streamer ${streamer.streamer_id}`} · {formatNumber(streamer.referred_num)} iscritti
+                </option>
+              ))}
+            </select>
+            <p className="mt-1.5 text-xs text-muted">
+              Sono le persone registrate con il codice di quello streamer. Scrivi la mail nella sua lingua: il filtro non legge la lingua dell&apos;account.
+            </p>
+          </label>
 
           <details className="mt-4 rounded-xl border border-line bg-surface px-5 py-4">
             <summary className="cursor-pointer text-sm font-semibold text-brand">Filtri avanzati</summary>

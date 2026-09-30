@@ -290,6 +290,7 @@ export type CampaignFilters = {
   inactive_days_over?: number;
   referral_type?: "all" | "user" | "streamer" | "none";
   tag_contains?: string;
+  streamer_id?: string;
 };
 
 export type EmailRecipientPreview = {
