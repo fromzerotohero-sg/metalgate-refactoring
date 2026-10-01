@@ -7,6 +7,7 @@ export const SERVICE_LABELS: Record<string, string> = {
   "assistant-chat": "Chat IA",
   internal: "SilverGate",
   efootball: "eFootball",
+  "connection-radar": "Connection Radar",
   "non attribuito": "Non attribuito"
 };
 

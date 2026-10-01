@@ -169,7 +169,7 @@ export default function PanoramicaPage() {
               ? `${formatNumber(stats.connection_radar.today.users)} persone · ${formatNumber(stats.connection_radar.today.hp)} HP · 30gg: ${formatNumber(stats.connection_radar.last_30d.tests)} test`
               : "Test pagati, 3 HP ciascuno"
           }
-          href="/transazioni?description=connection-radar"
+          href="/utenti?status=radar_today&sort=last_login&order=desc"
         />
         <StatCard
           label="Chat aperte"

@@ -13,6 +13,7 @@ const QUICK_FILTERS: { value: string; label: string; dot: string | null }[] = [
   { value: "", label: "Tutti", dot: null },
   { value: "today", label: "Login oggi", dot: "bg-green-500" },
   { value: "spent_today", label: "Hanno speso oggi", dot: "bg-amber-500" },
+  { value: "radar_today", label: "Radar oggi", dot: "bg-sky-500" },
   { value: "inactive", label: "Inattivi da 30gg", dot: "bg-slate-400" },
   { value: "unverified", label: "Non verificati", dot: "bg-red-500" }
 ];
@@ -194,6 +195,12 @@ function UsersPageInner() {
               <span className="text-amber-700">{formatNumber(stats.users_spent_today)} hanno speso oggi</span>
             </>
           )}
+          {stats.connection_radar != null && (
+            <>
+              {" · "}
+              <span className="text-sky-700">{formatNumber(stats.connection_radar.today.users)} Radar oggi</span>
+            </>
+          )}
           {" · "}
           {formatNumber(stats.total_users)} totali
         </p>
@@ -204,6 +211,14 @@ function UsersPageInner() {
       )}
       {status === "spent_today" && (
         <p className="admin-muted">Stesso criterio della card «Hanno speso crediti oggi»: utenti distinti con un addebito dalla mezzanotte UTC.</p>
+      )}
+      {status === "radar_today" && (
+        <p className="admin-muted">
+          Stesse persone della card «Connection Radar oggi»: un test pagato dalla mezzanotte UTC.{" "}
+          <a className="font-semibold text-brand hover:underline" href="/transazioni?description=connection-radar">
+            Vedi le singole operazioni
+          </a>
+        </p>
       )}
 
       <div className="card p-3 sm:p-4">
@@ -241,7 +256,7 @@ function UsersPageInner() {
                     updateQuery({
                       status: filter.value,
                       page: "",
-                      ...(filter.value === "today" || filter.value === "spent_today"
+                      ...(filter.value === "today" || filter.value === "spent_today" || filter.value === "radar_today"
                         ? { sort: "last_login", order: "desc" }
                         : {})
                     })

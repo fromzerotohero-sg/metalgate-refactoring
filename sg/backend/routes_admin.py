@@ -322,17 +322,18 @@ def _utc_today_start() -> str:
     return sessions.now().replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
 
 
-def _spender_ids_since(supabase, since_iso: str) -> list:
+def _spender_ids_since(supabase, since_iso: str, description: str | None = None) -> list:
     """
     Distinct users with a credit-out ledger row at or after `since_iso`.
 
     Same predicate as `users_spent_today` (`is_credit_out`), so the dashboard
-    card and `status=spent_today` stay equal.
+    card and `status=spent_today` stay equal. `description` narrows that set
+    to one feature, which is how `status=radar_today` matches the Radar card.
     """
     rows = fetch_all(
         lambda offset, limit: (
             supabase.table("transactions")
-            .select("user_id, amount, type")
+            .select("user_id, amount, type, description")
             .gte("timestamp", since_iso)
             .order("id")
             .range(offset, offset + limit - 1)
@@ -344,7 +345,9 @@ def _spender_ids_since(supabase, since_iso: str) -> list:
         {
             str(row.get("user_id"))
             for row in rows
-            if row.get("user_id") and is_credit_out(row)
+            if row.get("user_id")
+            and is_credit_out(row)
+            and (not description or str(row.get("description") or "") == description)
         }
     )
 
@@ -362,7 +365,7 @@ def _service_breakdown(supabase, user_id: str) -> list:
         rows = fetch_all(
             lambda offset, limit: (
                 supabase.table("transactions")
-                .select("amount, type, service")
+                .select("amount, type, service, description")
                 .eq("user_id", user_id)
                 .order("id")
                 .range(offset, offset + limit - 1)
@@ -378,7 +381,11 @@ def _service_breakdown(supabase, user_id: str) -> list:
     for row in rows:
         if not is_credit_out(row):
             continue
-        key = str(row.get("service") or "").strip() or "non attribuito"
+        description = str(row.get("description") or "").strip()
+        # A named feature stays visible on the user, not only inside its platform.
+        key = description if description == "connection-radar" else (
+            str(row.get("service") or "").strip() or "non attribuito"
+        )
         entry = buckets.setdefault(key, {"credits": 0, "count": 0})
         entry["credits"] += abs(_safe_int(row.get("amount"), 0))
         entry["count"] += 1
@@ -1419,7 +1426,7 @@ def get_users():
         search = request.args.get("search", "").lower()
         status = request.args.get(
             "status", ""
-        )  # verified, unverified, active, inactive, today, spent_today
+        )  # verified, unverified, active, inactive, today, spent_today, radar_today
 
         sort_params = _admin_sort_params(USER_SORT_COLUMNS, "created_at")
         if not sort_params:
@@ -1440,6 +1447,8 @@ def get_users():
         id_chunks = (
             chunked(_spender_ids_since(supabase, today_start))
             if status == "spent_today"
+            else chunked(_spender_ids_since(supabase, today_start, "connection-radar"))
+            if status == "radar_today"
             else [None]
         )
 
@@ -1460,7 +1469,7 @@ def get_users():
                 query = query.lt("last_login", month_ago)
             elif status == "today":
                 query = query.gte("last_login", today_start)
-            elif status == "spent_today":
+            elif status in ("spent_today", "radar_today"):
                 if not id_chunk:
                     return []
                 query = query.in_("id", id_chunk)
