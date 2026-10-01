@@ -136,6 +136,12 @@ def create_subscription_checkout(user: dict, plan_id: str) -> dict:
         success_url=cfg["CHECKOUT_SUCCESS_URL"],
         cancel_url=cfg["CHECKOUT_CANCEL_URL"],
         allow_promotion_codes=True,
+        # Link otherwise asks for a code before the card form when the email
+        # already has a Link account. `never` opens the card fields first.
+        # The parameter exists from API version 2025-04-30; the SDK default is
+        # older, so only this call asks for that version.
+        wallet_options={"link": {"display": "never"}},
+        stripe_version="2025-04-30.basil",
         metadata={"user_id": str(user["id"]), "plan_id": plan_id},
         subscription_data={
             "metadata": {"user_id": str(user["id"]), "plan_id": plan_id},
